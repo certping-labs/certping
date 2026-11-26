@@ -1,0 +1,35 @@
+// Copyright Seaionl Inc. and CertPing contributors
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+// Served by the server on its internal gRPC port, called by the notifier before it emails an
+// organization. Owned by the server; the notifier keeps an identical copy.
+package certping.internal.v1;
+
+option java_multiple_files = true;
+option java_package = "com.certmanagement.internal.v1";
+
+service NotificationPolicyService {
+  // Whether the organization's notification of this action may be delivered. False only when the
+  // organization may use notification settings and its admins turned off the action's category.
+  // Every other case is true: an action outside every category, an unknown organization, and any
+  // failure to read the settings. INVALID_ARGUMENT for a request outside the limits below.
+  //
+  // Callers set a 1-second deadline, do not retry, and deliver on any error: an answer that does not
+  // arrive must never cost a notification.
+  rpc AllowsNotification(AllowsNotificationRequest) returns (AllowsNotificationResponse);
+}
+
+message AllowsNotificationRequest {
+  // Greater than 0.
+  int64 organization_id = 1;
+  // A notification action, e.g. CERT_RENEWAL_SUCCESS: 1 to 64 of [A-Z0-9_], starting with a letter.
+  string action = 2;
+}
+
+message AllowsNotificationResponse {
+  bool allowed = 1;
+  // When allowed is false, the category turned off, e.g. CERTIFICATE_ACTIVITY; otherwise empty.
+  string category = 2;
+}

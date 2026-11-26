@@ -1,0 +1,42 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Dependency review
+
+# Fails a pull request that adds a dependency with a known vulnerability or an
+# incompatible license, using GitHub's dependency graph. The graph and this
+# check are free on public repositories only, so the job is skipped while the
+# repository is private (the trivy scan in security.yml covers CVEs meanwhile).
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write # summary comment on the pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          # CertPing is Apache-2.0 (README.md#license): block the licenses that would
+          # impose their terms on it. Weak copyleft (LGPL, EPL, MPL) is reviewed and
+          # recorded in licenses/ instead.
+          deny-licenses: GPL-3.0, AGPL-3.0, SSPL-1.0

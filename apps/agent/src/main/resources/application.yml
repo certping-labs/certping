@@ -1,0 +1,135 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: certping-agent
+  # Virtual threads (JDK 21+, pinning fixed in JDK 24+): every request, scheduled job and @Async
+  # task gets its own cheap thread, so thousands of agents long-polling the gateway do not
+  # exhaust a platform thread pool. Set CERTPING_VIRTUAL_THREADS=false to fall back.
+  threads:
+    virtual:
+      enabled: ${CERTPING_VIRTUAL_THREADS:true}
+  # Keep Jackson 2's JSON conventions so messages between services read the same on both
+  # sides of the Jackson 3 upgrade.
+  jackson:
+    use-jackson2-defaults: true
+  task:
+    scheduling:
+      # Must be > 1 and belongs here rather than in a profile: every scheduled publisher sends
+      # to the server over HTTPS, which can stall while the server is unreachable. On Boot's
+      # single-threaded default a stalled CA health report starves the
+      # heartbeat — the signal that tells the server the agent is alive. A run with no active
+      # profile must not silently lose this.
+      pool:
+        size: ${AGENT_SCHEDULER_POOL_SIZE:4}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        # The server's public status page reads this group; it answers UP or DOWN and nothing else.
+        status:
+          include: agent
+          show-details: never
+          show-components: never
+        # A rejected agent token marks the agent not ready, without a liveness restart loop.
+        readiness:
+          include: readinessState,gatewayAuth
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+
+logging:
+  pattern:
+    # Every log line carries [reqId corrId messageId orgId] so a single request can be traced
+    # across services. Stack traces are appended on the same log event so the prefix is inherited.
+    console: "%d{yyyy-MM-dd HH:mm:ss} [req=%X{requestId:-} corr=%X{correlationId:-} msg=%X{messageId:-} org=%X{organizationId:-}] %-5level %logger{36} - %msg%n"
+
+# Scheduled-retry policy (RetryableAgentException / blind-backoff buckets). These mirror the
+# defaults in AgentProperties.RetryProperties — declared here so the knobs are discoverable and
+# overridable per environment (Helm values / env vars). Durations use Spring shorthand (48h, 30s);
+# blind-backoff is the back-off curve indexed by RetryCount (env override accepts a CSV list).
+agent:
+  # True only for the agent shipped with the server (all-in-one, compose bundle, chart bundledAgent).
+  bundled: ${CERTPING_AGENT_BUNDLED:false}
+  # How the agent reaches the CertPing server: outbound HTTPS to the agent gateway with an agent
+  # token, no inbound port needed.
+  transport:
+    server-url: ${CERTPING_SERVER_URL:}
+    token: ${CERTPING_AGENT_TOKEN:}
+    # Commands handled at the same time (one gateway poller each, default 8, plus one lock
+    # renewer thread per poller), and how long a command's lock is kept renewed.
+    max-concurrent-jobs: ${CERTPING_AGENT_MAX_CONCURRENT_JOBS:8}
+    max-lock-renewal: ${CERTPING_AGENT_MAX_LOCK_RENEWAL:30m}
+  # Where the agent keeps private keys and credentials. LOCAL: encrypted files on a volume shared
+  # with the server (single-server installs). AZURE_KV, AWS_SECRETS_MANAGER, GCP_SECRET_MANAGER: the
+  # customer's cloud secret manager (agent.secret-store.*).
+  secret-store:
+    provider: ${AGENT_SECRET_STORE_PROVIDER:LOCAL}
+    local:
+      directory: ${CERTPING_LOCAL_SECRET_DIR:/var/lib/certping/secrets}
+      key: ${CERTPING_LOCAL_SECRET_KEY:}
+  # Device-source profiles are local to the agent. Configure list entries through Helm/YAML or
+  # Spring indexed env vars such as AGENT_DEVICE_SOURCES_PROFILES_0_CREDENTIALS_JSON.
+  device-sources:
+    health-initial-delay: 15s
+    health-interval: 5m
+    max-response-bytes: 245760
+    profiles: []
+  retry:
+    max-scheduled-retries: 8
+    max-retries-by-reason:
+      "[DNS_PROPAGATION_PENDING]": 3
+      "[RESPONSE_PUBLISH_FAILED]": -1
+    absolute-max-scheduled-retries: 200
+    hard-cap-new-order: 48h
+    hard-cap-renewal: 168h
+    max-attempt-age-new-order: 96h
+    max-attempt-age-renewal: 168h
+    jitter-percent: 10
+    blind-backoff:
+      - 30s
+      - 2m
+      - 10m
+      - 1h
+      - 6h
+      - 12h
+      - 24h
+
+  smallstep:
+    # Revocation and SCEP renewal checks require step-ca CRLs with generateOnRevoke enabled.
+    max-crl-bytes: ${SMALLSTEP_MAX_CRL_BYTES:16777216}
+    max-concurrent-crl-fetches: ${SMALLSTEP_MAX_CONCURRENT_CRL_FETCHES:4}
+
+  # SCEP device-enrollment endpoint (RFC 8894). Off by default — SSL-only deployments are unaffected.
+  # When enabled, the agent serves one route per Intune device-source profile:
+  # /scep/v1/{connection-profile-ref}. Every certificate profile of a connection shares that URL —
+  # there is no per-profile endpoint id and no SCEP_ENDPOINT_ID variable.
+  scep:
+    enabled: ${SCEP_ENABLED:false}
+    # Public base URL advertised to Intune certificate profiles (scheme + host, no path).
+    public-base-url: ${SCEP_PUBLIC_BASE_URL:}
+    # Serve /scep/v1/default too, but only while exactly one Intune source is configured.
+    default-compatibility-alias: ${SCEP_DEFAULT_COMPATIBILITY_ALIAS:true}
+    ca:
+      # Production issuer: ejbca or smallstep (JWK provisioner).
+      backend: ${SCEP_CA_BACKEND:ejbca}
+      ra-keystore-handle: ${SCEP_RA_KEYSTORE_HANDLE:}
+    intune:
+      # Required when SCEP is enabled. MicrosoftIntuneScepValidator checks each challenge against
+      # the tenant credential of the source route and reports the issuance outcome to Intune.
+      enabled: ${SCEP_INTUNE_ENABLED:false}
+      provider-name-and-version: ${SCEP_INTUNE_PROVIDER:CertPing-Agent/0.1}

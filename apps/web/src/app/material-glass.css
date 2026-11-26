@@ -1,0 +1,697 @@
+/* Copyright Seaionl Inc. and CertPing contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * Material Glass.
+ * Colour lives in content (Material 3, flat, opaque); glass lives in chrome
+ * (Liquid Glass, light borrowed from the backdrop); springs move everything.
+ * Colour comes from role variables: app tokens by default, Material tokens
+ * inside the landing (.m3).
+ */
+
+@property --lg-pool {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+:root,
+.light {
+  --mg-primary-rgb: 0 113 227;
+  --mg-on-primary: #fff;
+  --mg-tonal: hsl(var(--primary-soft));
+  --mg-on-tonal: hsl(var(--primary-soft-foreground));
+  --mg-neutral: hsl(var(--secondary));
+  --mg-on-surface: hsl(var(--foreground));
+  --mg-outline: hsl(var(--control-border-hover));
+  --mg-track: hsl(var(--secondary-200));
+  --mg-thumb: #fff;
+  --mg-danger: hsl(var(--destructive));
+  --mg-glass-fill: 250 250 252;
+  --mg-hairline: rgb(11 19 43 / 0.08);
+  --mg-glass-shadow:
+    0 10px 30px -14px rgb(11 19 43 / 0.25), 0 1px 3px rgb(11 19 43 / 0.08);
+  --mg-elevation-1:
+    0 1px 2px 0 rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --mg-elevation-2:
+    0 1px 2px 0 rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+  --mg-elevation-3:
+    0 1px 3px 0 rgb(0 0 0 / 0.3), 0 4px 8px 3px rgb(0 0 0 / 0.15);
+  --mg-overlay-bg: color-mix(in srgb, hsl(var(--primary)) 4%, #fff);
+  --mg-overlay-shadow:
+    0 0 0 1px rgb(11 19 43 / 0.12), 0 6px 14px -4px rgb(11 19 43 / 0.14),
+    0 22px 48px -12px rgb(11 19 43 / 0.32);
+
+  /* M3 Expressive springs sampled to linear(): fast spatial 0.6/800, default spatial 0.8/380. */
+  --mg-spring-fast: linear(
+    0,
+    0.071,
+    0.235,
+    0.435,
+    0.631,
+    0.8,
+    0.929,
+    1.017,
+    1.069,
+    1.092,
+    1.094,
+    1.083,
+    1.065,
+    1.046,
+    1.028,
+    1.014,
+    1.003,
+    0.996,
+    0.992,
+    0.991,
+    0.991,
+    0.993,
+    0.995,
+    0.996,
+    1
+  );
+  --mg-spring-default: linear(
+    0,
+    0.047,
+    0.155,
+    0.291,
+    0.432,
+    0.563,
+    0.677,
+    0.771,
+    0.846,
+    0.903,
+    0.945,
+    0.974,
+    0.994,
+    1.005,
+    1.012,
+    1.015,
+    1.015,
+    1.014,
+    1.012,
+    1.01,
+    1.008,
+    1.006,
+    1.004,
+    1.003,
+    1
+  );
+  --mg-dur-fast: 350ms;
+  --mg-dur-default: 410ms;
+  --mg-dur-effects: 210ms;
+  --mg-effects: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.dark {
+  --mg-overlay-bg: color-mix(in srgb, hsl(var(--primary)) 6%, hsl(0 0% 15%));
+  --mg-overlay-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.12), 0 22px 48px -12px rgb(0 0 0 / 0.8);
+  --mg-danger: hsl(0 72% 46%);
+  --mg-primary-rgb: 0 113 227;
+  --mg-on-primary: #fff;
+  --mg-track: hsl(0 0% 14%);
+  --mg-thumb: hsl(0 0% 24%);
+  --mg-glass-fill: 28 30 36;
+  --mg-hairline: rgb(255 255 255 / 0.1);
+  --mg-glass-shadow:
+    0 10px 30px -14px rgb(0 0 0 / 0.6), 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+.m3 {
+  --mg-primary-rgb: 0 74 198;
+  --mg-on-primary: var(--md-sys-color-on-primary);
+  --mg-tonal: var(--md-sys-color-secondary-container);
+  --mg-on-tonal: var(--md-sys-color-on-secondary-container);
+  --mg-neutral: var(--md-sys-color-surface-container-high);
+  --mg-on-surface: var(--md-sys-color-on-surface);
+  --mg-outline: var(--md-sys-color-outline);
+  --mg-track: var(--md-sys-color-surface-container-highest);
+  --mg-thumb: var(--md-sys-color-surface-container-lowest);
+  --mg-glass-fill: 250 248 255;
+  --mg-hairline: rgb(11 19 43 / 0.08);
+}
+
+/* ================= Material 3 content layer ================= */
+
+.mg-card {
+  transition:
+    box-shadow var(--mg-dur-effects) var(--mg-effects),
+    translate var(--mg-dur-default) var(--mg-spring-default);
+}
+
+:is(a, button).mg-card:hover,
+.mg-card.mg-card-hover:hover {
+  box-shadow: var(--mg-elevation-1);
+  translate: 0 -1px;
+}
+
+.mg-icon {
+  background: var(--mg-tonal);
+  color: var(--mg-on-tonal);
+}
+
+/* Buttons in content: M3 roles, state layers and elevation; tactile spring press. */
+.mg-btn {
+  --mg-state: currentColor;
+  border-radius: 9999px;
+  letter-spacing: 0.1px;
+  overflow: hidden;
+  transition:
+    scale var(--mg-dur-fast) var(--mg-spring-fast),
+    box-shadow var(--mg-dur-effects) var(--mg-effects),
+    background-color var(--mg-dur-effects) var(--mg-effects),
+    color var(--mg-dur-effects) var(--mg-effects);
+}
+
+:is(.mg-btn, .lg, .lg-interactive, .mg-floating .mg-screen):not(.absolute):not(
+    .fixed
+  ):not(.sticky) {
+  position: relative;
+}
+
+.mg-btn:not(.lg)::before {
+  background: var(--mg-state);
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transition: opacity 150ms var(--mg-effects);
+}
+
+.mg-btn:not(.lg):hover::before {
+  opacity: 0.08;
+}
+
+.mg-btn:not(.lg):is(:focus-visible, :active)::before {
+  opacity: 0.1;
+}
+
+:is(.mg-btn:not(.lg), .lg-interactive:not(.lg)):active {
+  scale: 0.97;
+  transition-duration:
+    90ms, var(--mg-dur-effects), var(--mg-dur-effects), var(--mg-dur-effects);
+}
+
+.mg-btn:is(:disabled, [aria-disabled="true"]) {
+  background: rgb(var(--mg-shadow-rgb, 25 27 35) / 0.12);
+  box-shadow: none;
+  color: rgb(25 27 35 / 0.38);
+  cursor: default;
+  scale: 1;
+}
+
+.dark .mg-btn:is(:disabled, [aria-disabled="true"]) {
+  background: rgb(255 255 255 / 0.12);
+  color: rgb(255 255 255 / 0.38);
+}
+
+.mg-btn:is(:disabled, [aria-disabled="true"])::before {
+  display: none;
+}
+
+.mg-btn-primary {
+  --mg-state: var(--mg-on-primary);
+  background: rgb(var(--mg-primary-rgb));
+  color: var(--mg-on-primary);
+}
+
+.mg-btn-tonal {
+  --mg-state: var(--mg-on-tonal);
+  background: var(--mg-tonal);
+  color: var(--mg-on-tonal);
+}
+
+.mg-btn-neutral {
+  --mg-state: var(--mg-on-surface);
+  background: var(--mg-neutral);
+  color: var(--mg-on-surface);
+}
+
+.mg-btn-outline {
+  --mg-state: var(--mg-on-surface);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--mg-outline);
+  color: var(--mg-on-surface);
+}
+
+.mg-btn-danger {
+  --mg-state: #fff;
+  background: var(--mg-danger);
+  color: #fff;
+}
+
+.mg-btn-text {
+  --mg-state: rgb(var(--mg-primary-rgb));
+  color: rgb(var(--mg-primary-rgb));
+}
+
+.dark .mg-btn-text {
+  color: hsl(var(--primary));
+}
+
+:is(.mg-btn-primary, .mg-btn-tonal, .mg-btn-neutral, .mg-btn-danger):hover {
+  box-shadow: var(--mg-elevation-1);
+}
+
+.mg-btn-outline:hover {
+  box-shadow: inset 0 0 0 1px var(--mg-on-surface);
+}
+
+/* Pending: the spinner springs in beside the label as the label morphs. */
+.mg-btn-spinner {
+  transition:
+    scale var(--mg-dur-fast) var(--mg-spring-fast),
+    opacity var(--mg-dur-effects) var(--mg-effects);
+}
+
+@starting-style {
+  .mg-btn-spinner {
+    opacity: 0;
+    scale: 0.4;
+  }
+}
+
+/* Overlays (menus, selects, popovers, dialogs, sheets): lifted off the page. */
+.mg-overlay {
+  background-color: var(--mg-overlay-bg);
+  box-shadow: var(--mg-overlay-shadow);
+}
+
+.mg-overlay-modal {
+  box-shadow:
+    0 0 0 1px rgb(11 19 43 / 0.06),
+    0 24px 60px -16px rgb(11 19 43 / 0.35);
+}
+
+.dark .mg-overlay-modal {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.1),
+    0 24px 60px -16px rgb(0 0 0 / 0.8);
+}
+
+.mg-elev-1 {
+  box-shadow: var(--mg-elevation-1);
+}
+
+/* ================= Liquid Glass chrome layer ================= */
+
+/*
+ * Two layers under the content of any .lg element:
+ *   ::before  the material: translucent fill, blur and saturation, hairline.
+ *   ::after   light from the backdrop: a 1px lens edge and, on interaction, a
+ *             pool at the pointer. Both brighten and saturate whatever sits
+ *             behind the glass, so the light takes the content's colour.
+ * The element itself never sets backdrop-filter, so neither layer is cut off
+ * from the page behind it.
+ */
+:where(.lg, .mg-floating .mg-screen) {
+  --lg-alpha: 0.72;
+  --lg-blur: 22px;
+  --lg-light: 1.14;
+  --lg-x: 50%;
+  --lg-y: 0%;
+}
+
+:where(.lg-clear) {
+  --lg-alpha: 0.12;
+  --lg-blur: 14px;
+  --lg-light: 1.2;
+}
+
+.lg,
+.mg-floating .mg-screen {
+  transition:
+    --lg-pool 320ms var(--mg-effects),
+    scale var(--mg-dur-fast) var(--mg-spring-fast);
+  z-index: 0;
+}
+
+.lg::before,
+.lg::after,
+.mg-floating .mg-screen::before,
+.mg-floating .mg-screen::after {
+  border-radius: inherit;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+:is(.lg, .mg-floating .mg-screen)::before {
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(180%);
+  backdrop-filter: blur(var(--lg-blur)) saturate(180%);
+  background: rgb(var(--mg-glass-fill) / var(--lg-alpha));
+  box-shadow:
+    inset 0 0 0 0.5px var(--mg-hairline),
+    var(--mg-glass-shadow);
+  transition: background-color var(--mg-dur-effects) var(--mg-effects);
+}
+
+:is(.lg, .mg-floating .mg-screen)::after {
+  -webkit-backdrop-filter: brightness(var(--lg-light)) saturate(115%);
+  backdrop-filter: brightness(var(--lg-light)) saturate(115%);
+  -webkit-mask:
+    radial-gradient(
+      var(--lg-pool) circle at var(--lg-x) var(--lg-y),
+      #000,
+      transparent
+    ),
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: source-over, xor;
+  mask:
+    radial-gradient(
+        var(--lg-pool) circle at var(--lg-x) var(--lg-y),
+        #000,
+        transparent
+      )
+      add,
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  padding: 1px;
+}
+
+.lg-clear {
+  color: #fff;
+}
+
+.lg-clear::before {
+  background: rgb(255 255 255 / var(--lg-alpha));
+  box-shadow:
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.22),
+    0 10px 30px -14px rgb(0 0 0 / 0.4);
+}
+
+.lg.lg-interactive:is(:hover, :focus-visible) {
+  --lg-pool: 110px;
+}
+
+.lg.lg-interactive:active {
+  --lg-pool: 220px;
+  scale: 1.04;
+  transition-duration: 160ms, 120ms;
+}
+
+.lg.lg-interactive:hover::before {
+  background: rgb(var(--mg-glass-fill) / calc(var(--lg-alpha) + 0.06));
+}
+
+.lg-clear.lg-interactive:hover::before {
+  background: rgb(255 255 255 / calc(var(--lg-alpha) + 0.08));
+}
+
+/* ================= Selection motion ================= */
+
+.mg-segmented {
+  background: var(--mg-track);
+  isolation: isolate;
+  position: relative;
+}
+
+.mg-segmented > button {
+  transition: color var(--mg-dur-effects) var(--mg-effects);
+}
+
+.mg-thumb {
+  background: rgb(var(--mg-primary-rgb));
+  border-radius: 9999px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  inset-block: 4px;
+  pointer-events: none;
+  position: absolute;
+  transition-duration:
+    var(--mg-dur-default), var(--mg-dur-default), var(--mg-dur-fast),
+    var(--mg-dur-effects), var(--mg-dur-effects);
+  transition-property: left, right, scale, background-color, box-shadow;
+  transition-timing-function:
+    var(--mg-spring-default), var(--mg-spring-default), var(--mg-spring-fast),
+    var(--mg-effects), var(--mg-effects);
+  z-index: -1;
+}
+
+/* Selected label sits on the blue thumb. */
+.mg-segmented.mg-segmented
+  > :is([aria-pressed="true"], [aria-current="page"], [data-state="active"]) {
+  color: var(--mg-on-primary);
+}
+
+.mg-segmented.mg-segmented:has(.mg-thumb.is-moving)
+  > :is([aria-pressed="true"], [aria-current="page"], [data-state="active"]) {
+  color: inherit;
+}
+
+.mg-segmented > :is(button, a) {
+  transition: color 160ms var(--mg-effects);
+}
+
+/*
+ * While the thumb travels (or the control is held) it lifts into a lens:
+ * slightly larger and translucent so the labels it passes show through.
+ * Releasing settles it back to size on the fast spatial spring, whose
+ * overshoot gives the landing "bloop".
+ */
+.mg-thumb.is-moving,
+.mg-segmented:active .mg-thumb {
+  background: rgb(var(--mg-primary-rgb) / 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--mg-primary-rgb) / 0.35),
+    0 8px 18px -8px rgb(var(--mg-primary-rgb) / 0.45);
+  scale: 1.1 1.16;
+}
+
+.mg-tab-indicator {
+  background: rgb(var(--mg-primary-rgb));
+  border-radius: 3px 3px 0 0;
+  bottom: 0;
+  height: 3px;
+  pointer-events: none;
+  position: absolute;
+  transition-duration: var(--mg-dur-default), var(--mg-dur-default);
+  transition-property: left, right;
+  transition-timing-function:
+    var(--mg-spring-default), var(--mg-spring-default);
+}
+
+.dark .mg-tab-indicator {
+  background: hsl(var(--primary));
+}
+
+/* Switch: M3 handle grows on press and lifts into a lens while held. */
+.mg-switch {
+  background-color: hsl(var(--secondary-300));
+  transition: background-color var(--mg-dur-effects) var(--mg-effects);
+}
+
+.dark .mg-switch {
+  background-color: hsl(var(--secondary-200));
+}
+
+.mg-switch[data-state="checked"] {
+  background-color: rgb(var(--mg-primary-rgb));
+}
+
+.mg-switch-thumb {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transition:
+    transform var(--mg-dur-fast) var(--mg-spring-fast),
+    scale var(--mg-dur-fast) var(--mg-spring-fast),
+    background-color var(--mg-dur-effects) var(--mg-effects),
+    box-shadow var(--mg-dur-effects) var(--mg-effects);
+}
+
+.mg-switch:active .mg-switch-thumb {
+  -webkit-backdrop-filter: blur(2px) saturate(190%) brightness(1.12);
+  backdrop-filter: blur(2px) saturate(190%) brightness(1.12);
+  background: rgb(255 255 255 / 0.4);
+  box-shadow:
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.5),
+    0 6px 14px -4px rgb(0 0 0 / 0.35);
+  scale: 1.45 1.25;
+}
+
+/* ---------- Overlays: pop from the trigger, spring in, fade out fast ---------- */
+
+@keyframes mg-pop-in {
+  from {
+    filter: blur(6px);
+    opacity: 0;
+    scale: 0.9;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes mg-pop-out {
+  to {
+    filter: blur(2px);
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+/* Animates transform, not translate: dialogs centre themselves with the translate property. */
+@keyframes mg-modal-in {
+  from {
+    opacity: 0;
+    scale: 0.94;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+    transform: none;
+  }
+}
+
+@keyframes mg-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes mg-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.mg-pop {
+  transform-origin: var(--radix-popper-transform-origin, top center);
+}
+
+.mg-pop:is(
+  [data-state="open"],
+  [data-state="delayed-open"],
+  [data-state="instant-open"]
+) {
+  animation: mg-pop-in var(--mg-dur-fast) var(--mg-spring-fast) both;
+}
+
+.mg-pop[data-state="closed"] {
+  animation: mg-pop-out 140ms var(--mg-effects) both;
+}
+
+.mg-modal[data-state="open"] {
+  animation: mg-modal-in var(--mg-dur-default) var(--mg-spring-default) both;
+}
+
+.mg-modal[data-state="closed"] {
+  animation: mg-pop-out 160ms var(--mg-effects) both;
+}
+
+.mg-scrim[data-state="open"] {
+  animation: mg-fade-in 220ms var(--mg-effects) both;
+}
+
+.mg-scrim[data-state="closed"] {
+  animation: mg-fade-out 160ms var(--mg-effects) both;
+}
+
+/* ---------- Rows: M3 state layer on a soft inset ---------- */
+
+.mg-row {
+  transition: background-color var(--mg-dur-effects) var(--mg-effects);
+}
+
+.mg-row:hover {
+  background-color: rgb(var(--mg-primary-rgb) / 0.05);
+}
+
+.mg-row[data-state="selected"] {
+  background-color: rgb(var(--mg-primary-rgb) / 0.09);
+}
+
+/* ================= Accessibility ================= */
+
+@media (max-width: 640px) {
+  :where(.lg) {
+    --lg-blur: 14px;
+  }
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .lg::before {
+    background: rgb(var(--mg-glass-fill) / 0.96);
+  }
+
+  .lg-clear::before {
+    background: rgb(20 26 46 / 0.8);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .lg::before {
+    background: rgb(var(--mg-glass-fill) / 0.96);
+  }
+
+  .lg-clear::before {
+    background: rgb(20 26 46 / 0.86);
+  }
+
+  .lg::after {
+    display: none;
+  }
+
+  .mg-thumb.is-moving,
+  .mg-segmented:active .mg-thumb,
+  .mg-switch:active .mg-switch-thumb {
+    background: var(--mg-thumb);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .lg::before {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgb(var(--mg-glass-fill));
+    box-shadow: inset 0 0 0 1.5px currentColor;
+  }
+
+  .lg::after {
+    display: none;
+  }
+
+  .mg-btn-outline {
+    box-shadow: inset 0 0 0 2px var(--mg-on-surface);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    .lg,
+    .mg-btn,
+    .mg-card,
+    .mg-thumb,
+    .mg-tab-indicator,
+    .mg-switch,
+    .mg-switch-thumb,
+    .mg-btn-spinner,
+    .lg-interactive
+  ) {
+    transition-duration: 0ms !important;
+  }
+
+  .mg-thumb.is-moving,
+  .mg-pop,
+  .mg-modal,
+  .mg-scrim {
+    animation-duration: 1ms !important;
+  }
+
+  :is(.mg-btn, .lg, .lg-interactive):active,
+  .mg-thumb.is-moving,
+  .mg-segmented:active .mg-thumb,
+  .mg-switch:active .mg-switch-thumb {
+    scale: 1;
+  }
+}

@@ -1,0 +1,94 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Self-hosted agent. Connects to the CertPing server over outbound HTTPS with an agent token; no
+# message broker and no inbound port. The organization comes from the token.
+#
+# Bundled agent on a single server: CERTPING_SERVER_URL=http://server:8080 and the LOCAL secret
+# store on the volume shared with the server.
+# Remote agent in another network: CERTPING_SERVER_URL=https://<your CertPing host>, the token from
+# Organization & Access, Organization tab, Agents card, Add agent, and the cloud secret manager of
+# that network.
+
+agent:
+  organization-id: ${AGENT_ORGANIZATION_ID:}
+  transport:
+    server-url: ${CERTPING_SERVER_URL}
+    token: ${CERTPING_AGENT_TOKEN}
+  secret-store:
+    provider: ${AGENT_SECRET_STORE_PROVIDER:LOCAL}
+    local:
+      directory: ${CERTPING_LOCAL_SECRET_DIR:/var/lib/certping/secrets}
+      key: ${CERTPING_LOCAL_SECRET_KEY:}
+    azure-kv:
+      vault-uri: ${CLIENT_KV_URI:}
+      auth-mode: ${AZURE_KV_AUTH_MODE:DEFAULT}
+    aws-secrets-manager:
+      region: ${AWS_REGION:}
+      auth-mode: ${AWS_SM_AUTH_MODE:DEFAULT}
+    gcp-secret-manager:
+      project-id: ${GCP_PROJECT_ID:}
+      auth-mode: ${GCP_SM_AUTH_MODE:ADC}
+
+  # Let's Encrypt by default. Any ACME CA works: set ACME_DIRECTORY_URL (for example the
+  # Let's Encrypt staging URL while testing). ACME_ACCOUNT_EMAIL receives the CA's expiry and
+  # policy notices for the account the agent creates per organization. CAs that require external
+  # account binding (ZeroSSL, Google Trust Services, SSL.com and others) also need the key id and
+  # HMAC key they issue, in ACME_EAB_KEY_ID and ACME_EAB_HMAC_KEY.
+  acme:
+    directory-url: ${ACME_DIRECTORY_URL:https://acme-v02.api.letsencrypt.org/directory}
+    account-contact: ${ACME_ACCOUNT_EMAIL:}
+    eab-key-id: ${ACME_EAB_KEY_ID:}
+    eab-hmac-key: ${ACME_EAB_HMAC_KEY:}
+    max-rate-limit-retries: 3
+    challenge:
+      dns-propagation-wait-ms: 30000
+      max-attempts: 15
+      poll-interval-ms: 10000
+      order-timeout-ms: 600000
+    dns-verification:
+      max-attempts: 10
+      poll-interval-ms: 5000
+    automated-dns-verification:
+      max-attempts: 60
+      poll-interval-ms: 5000
+
+  # DigiCert: each organization adds its own CertCentral API key as a CA credential in CertPing,
+  # so the agent only needs the API endpoint here.
+  digicert:
+    api-base-url: ${DIGICERT_API_BASE_URL:https://www.digicert.com/services/v2}
+    order-poll-interval-ms: 15000
+    order-poll-max-attempts: 30
+    order-deadline: 30m
+
+  # GlobalSign issues on one account configured on the agent, not per organization.
+  # It stays unusable until the operator sets the account on every agent that should issue:
+  #   AGENT_GLOBALSIGN_API_KEY, AGENT_GLOBALSIGN_API_SECRET,
+  #   AGENT_GLOBALSIGN_CLIENT_CERT_PEM_BASE64, AGENT_GLOBALSIGN_CLIENT_PRIVATE_KEY_PEM_BASE64
+  #   (the Atlas mTLS client certificate and key), optional AGENT_GLOBALSIGN_API_BASE_URL
+  #   and the AGENT_GLOBALSIGN_*_JSON policy settings.
+  # Without them an order fails with GLOBALSIGN_CONFIG_MISSING.
+  globalsign:
+    api-base-url: ${AGENT_GLOBALSIGN_API_BASE_URL:https://emea.api.hvca.globalsign.com:8443/v2}
+    api-key: ${AGENT_GLOBALSIGN_API_KEY:}
+    api-secret: ${AGENT_GLOBALSIGN_API_SECRET:}
+    client-cert-pem-base64: ${AGENT_GLOBALSIGN_CLIENT_CERT_PEM_BASE64:}
+    client-private-key-pem-base64: ${AGENT_GLOBALSIGN_CLIENT_PRIVATE_KEY_PEM_BASE64:}
+    poll-interval-ms: ${AGENT_GLOBALSIGN_POLL_INTERVAL_MS:15000}
+    poll-max-attempts: ${AGENT_GLOBALSIGN_POLL_MAX_ATTEMPTS:30}
+    token-ttl-seconds: ${AGENT_GLOBALSIGN_TOKEN_TTL_SECONDS:600}
+    strict-policy-validation: ${AGENT_GLOBALSIGN_STRICT_POLICY_VALIDATION:true}
+    subject-dn-json: ${AGENT_GLOBALSIGN_SUBJECT_DN_JSON:}
+    san-json: ${AGENT_GLOBALSIGN_SAN_JSON:}
+    key-usages-json: ${AGENT_GLOBALSIGN_KEY_USAGES_JSON:}
+    extended-key-usages-json: ${AGENT_GLOBALSIGN_EXTENDED_KEY_USAGES_JSON:}
+    subject-da-json: ${AGENT_GLOBALSIGN_SUBJECT_DA_JSON:}
+    qualified-statements-json: ${AGENT_GLOBALSIGN_QUALIFIED_STATEMENTS_JSON:}
+    ms-extension-template-json: ${AGENT_GLOBALSIGN_MS_EXTENSION_TEMPLATE_JSON:}
+    custom-extensions-json: ${AGENT_GLOBALSIGN_CUSTOM_EXTENSIONS_JSON:}
+    signature-json: ${AGENT_GLOBALSIGN_SIGNATURE_JSON:}
+
+logging:
+  level:
+    root: WARN
+    com.certping: INFO

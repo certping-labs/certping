@@ -1,0 +1,25 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: certping
+description: >-
+  CertPing certificate lifecycle management for an existing Kubernetes cluster: web, server,
+  notifier and an optional bundled agent. Agents in other networks use the certping-agent chart.
+type: application
+version: 0.0.1-beta
+appVersion: "0.0.1-beta"
+home: https://github.com/certping-labs/certping
+maintainers:
+  - name: Chennarao Vemula
+    email: chenna@certping.com
+    url: https://github.com/chenna-certping
+sources:
+  - https://github.com/certping-labs/certping
+annotations:
+  artifacthub.io/license: Apache-2.0
+keywords:
+  - certificates
+  - tls
+  - pki
+  - acme

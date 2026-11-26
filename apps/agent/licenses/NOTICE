@@ -1,0 +1,92 @@
+CertPing
+Copyright 2024-2026 Seaionl Inc.
+
+This product includes software developed by Seaionl Inc. and contributors
+(https://github.com/certping-labs/certping).
+
+CertPing is licensed under the Apache License, Version 2.0 (see LICENSE).
+Third-party components and the bundled fonts keep their own licenses, listed
+below.
+
+Third-party components
+----------------------
+Binary distributions of CertPing (the container images and the all-in-one
+image) include third-party software under its own licenses, among them
+OpenJDK (GPL-2.0 with the Classpath Exception), Node.js, PostgreSQL, Valkey,
+Caddy, the OpenTelemetry Java agent, libvips (LGPL-3.0-or-later, used through
+sharp) and the Java and npm libraries of each application. The attributions,
+NOTICE files, license elections and full license texts they require are in
+/licenses/certping/THIRD-PARTY-NOTICES.txt in each image, and in
+licenses/<image>/THIRD-PARTY-NOTICES.txt in the source repository.
+
+Fonts
+-----
+The web app bundles the Geist and Geist Mono fonts (Copyright 2024 The Geist
+Project Authors, https://github.com/vercel/geist-font) and the Plus Jakarta
+Sans font (Copyright 2020 The Plus Jakarta Sans Project Authors,
+https://github.com/tokotype/PlusJakartaSans), licensed under the SIL Open Font
+License, Version 1.1 (https://openfontlicense.org).
+
+Code from other projects
+------------------------
+The web app's UI components (apps/web/src/components/ui) are based on shadcn/ui
+(https://ui.shadcn.com), Copyright (c) 2023 shadcn, licensed under the MIT
+License.
+
+Logos and icons
+---------------
+The vendor marks in the web app come from simple-icons 16.37.0
+(https://simpleicons.org, CC0-1.0), with the brand colour from its data file:
+
+  Akamai        apps/web/public/assets/akamai.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/akamai.svg
+  Cloudflare    apps/web/public/assets/cloudflare.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/cloudflare.svg
+  F5            apps/web/public/assets/f5.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/f5.svg
+  GoDaddy       apps/web/public/assets/godaddy.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/godaddy.svg
+  Google Cloud  apps/web/public/assets/gcp.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/googlecloud.svg
+  Hostinger     apps/web/public/assets/hostinger.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/hostinger.svg
+  Kubernetes    apps/web/public/assets/kubernetes.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/kubernetes.svg
+  Namecheap     apps/web/public/assets/namecheap.svg
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/namecheap.svg
+  PagerDuty     apps/web/src/components/icons/logos.tsx (PagerDuty)
+                https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons/pagerduty.svg
+
+simple-icons has no mark for the vendors below, so they are shown with generic
+icons from Phosphor Icons (https://phosphoricons.com, Copyright (c) 2020
+Phosphor Icons, MIT License), from @phosphor-icons/core 2.1.1
+(https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets/regular/<icon>.svg)
+or the @phosphor-icons/react component of the same name, recoloured grey:
+
+  cloud          aws.svg, aws-dark.svg, azure.svg
+  shield-check   aws-acm.svg, gcp-cert_manager.svg
+  signpost       aws-api-gateway.svg, gcp-api-gateway.svg
+  arrows-split   aws-lb.svg, gcp-lb.svg
+  globe          cloudfront.svg, gcp-cdn.svg, azure-frontdoor.svg
+  key            azure-kv.svg
+  door-open      azure-app-gateway.svg
+  package        azure-app-gateway-containers.svg
+  certificate    ejbca.svg, ejbca-dark.svg, smallstep.svg
+  laptop         jamf.svg, jamf-dark.svg
+  devices        microsoft-intune.svg
+  device-mobile  omnissa-workspace-one.svg
+  globe-simple   namecom.svg
+  hash           logos.tsx (Slack)
+  users-three    logos.tsx (MicrosoftTeams)
+  ticket         logos.tsx (ServiceNow)
+
+The files above are in apps/web/public/assets unless a path says otherwise.
+
+Trademarks
+----------
+CertPing® is a registered trademark of Seaionl Inc. in the United States. The Apache License does not grant
+permission to use it, except as required to describe the origin of the work.
+Third-party product names and logos shown in CertPing are trademarks of their
+respective owners. They are used only to identify the services CertPing
+integrates with, and their use does not imply any affiliation with or
+endorsement by those owners.

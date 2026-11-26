@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright Seaionl Inc. and CertPing contributors
+     SPDX-License-Identifier: Apache-2.0 -->
+
+<!--
+  Per-line MDC prefixing for stack traces.
+
+  The Spring Boot default appender renders exceptions via the built-in %ex converter, which prints
+  only the header line with MDC and leaves subsequent stack frames un-prefixed. That breaks
+  grep-by-id for any log line below the exception header.
+
+  Here we register `%mdcEx` (backed by MdcThrowableConverter) and use it instead of %ex so every
+  line of every stack trace carries the same [req= corr= msg= org=] prefix as the event header.
+  The pattern itself is kept in sync with application.yaml's logging.pattern.console — change one,
+  change the other.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <conversionRule conversionWord="mdcEx"
+                    converterClass="com.certmanagement.util.MdcThrowableConverter"/>
+
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss} [req=%X{requestId:-} corr=%X{correlationId:-} msg=%X{messageId:-} org=%X{organizationId:-}] %-5level %logger{36} - %msg%n%mdcEx"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

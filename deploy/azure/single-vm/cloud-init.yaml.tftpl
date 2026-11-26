@@ -1,0 +1,51 @@
+#cloud-config
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Installs Docker, puts Docker's data on the attached data disk, and starts the CertPing Compose
+# install for ${domain}. Progress: sudo tail -f /var/log/certping-install.log
+package_update: true
+packages:
+  - git
+  - openssl
+  - ca-certificates
+  - curl
+  - unattended-upgrades
+
+write_files:
+  - path: /usr/local/sbin/certping-install
+    permissions: "0750"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      exec >>/var/log/certping-install.log 2>&1
+
+      # Data disk (LUN 0) for Docker's volumes; formatted only the first time.
+      disk=/dev/disk/azure/scsi1/lun0
+      for _ in $(seq 1 60); do [[ -e "$disk" ]] && break; sleep 5; done
+      if ! blkid "$disk" >/dev/null 2>&1; then mkfs.ext4 -L certping-data "$disk"; fi
+      mkdir -p /var/lib/docker
+      grep -q certping-data /etc/fstab || echo "LABEL=certping-data /var/lib/docker ext4 defaults,nofail 0 2" >> /etc/fstab
+      mount -a
+
+      curl -fsSL https://get.docker.com | sh
+      systemctl enable --now docker
+      usermod -aG docker ${admin_user}
+
+      if [[ ! -d /opt/certping ]]; then
+        git clone --depth 1 --branch ${git_ref} ${repo_url} /opt/certping
+      fi
+      cd /opt/certping/deploy/compose
+      # The .env (keys and passwords) lives on the data disk with the volumes, so a rebuilt VM keeps it.
+      mkdir -p /var/lib/docker/certping
+      if [[ ! -e /var/lib/docker/certping/.env ]]; then
+        CERTPING_ENV_FILE=/var/lib/docker/certping/.env ./setup.sh ${domain}
+      fi
+      ln -sf /var/lib/docker/certping/.env .env
+      # Pulls the released images (CERTPING_VERSION in .env, default the kit's release).
+      docker compose pull
+      docker compose up -d --no-build
+      echo "CertPing is starting at https://${domain}"
+
+runcmd:
+  - [/usr/local/sbin/certping-install]

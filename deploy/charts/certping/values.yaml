@@ -1,0 +1,195 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# CertPing on Kubernetes. Minimum to set: url, and a Secret made by create-secret.sh.
+#
+#   ./create-secret.sh certping.example.com            # once, creates Secret "certping"
+#   helm install certping . --set url=https://certping.example.com
+
+# Public URL people and remote agents use. The Ingress serves this host.
+url: ""
+
+image:
+  registry: ghcr.io/certping-labs
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Secret holding the generated keys and passwords (see create-secret.sh for the keys it carries).
+existingSecret: certping
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt
+  # Secret with the TLS certificate for the host; leave empty when TLS ends in front of the cluster.
+  tlsSecretName: ""
+
+server:
+  # One replica while the bundled agent uses the LOCAL secret store (a ReadWriteOnce volume).
+  replicas: 1
+  resources:
+    requests: { cpu: 250m, memory: 768Mi }
+    limits: { memory: 1536Mi }
+  # Database connections per server replica (DB_POOL_SIZE). Make sure PostgreSQL's max_connections
+  # covers replicas x dbPoolSize plus the notifier's 10 per replica and some headroom.
+  dbPoolSize: 40
+  # Extra environment for this container, added after the chart's own entries (a later entry with
+  # the same name wins). extraEnv takes env entries, extraEnvFrom takes envFrom sources, e.g.:
+  #   extraEnv:
+  #     - name: LOG_LEVEL
+  #       value: DEBUG
+  #   extraEnvFrom:
+  #     - secretRef: { name: my-extra-settings }
+  # web, notifier and bundledAgent take the same two keys.
+  extraEnv: []
+  extraEnvFrom: []
+
+# Single sign-on with one OpenID Connect provider for the installation. Sign-in stays local only
+# until issuerUri, clientId and organization are set here and CERTPING_OIDC_CLIENT_SECRET is in
+# existingSecret. Register <CERTPING_URL>/login/oauth2/code/sso as the redirect URI at the provider.
+# docs/self-hosting.md, "Single sign-on".
+sso:
+  oidc:
+    issuerUri: ""
+    clientId: ""
+    # The organization members are signed into: its slug or numeric id.
+    organization: ""
+    displayName: "Single sign-on"
+    # Built-in role for members provisioned at first sign-in (never SUPER_ADMIN).
+    defaultRole: VIEWER
+    # false: only invited members can use the provider.
+    autoProvision: true
+
+web:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  extraEnv: []
+  extraEnvFrom: []
+
+notifier:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 768Mi }
+  # SMTP for notifications. The password comes from existingSecret (MAIL_PASSWORD).
+  mail:
+    host: ""
+    port: 587
+    username: ""
+    from: ""
+    # MAIL_STARTTLS: STARTTLS is offered and required. false for a relay without TLS (port 25).
+    starttls: true
+    # MAIL_SMTP_AUTH: sign in with username and MAIL_PASSWORD. false for a relay without sign-in.
+    smtpAuth: true
+  extraEnv: []
+  extraEnvFrom: []
+
+# The agent that runs beside the server, sharing an encrypted secrets volume (LOCAL store).
+# Turn it off when every agent runs in its own network with the certping-agent chart.
+bundledAgent:
+  enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 768Mi }
+  secretsVolume:
+    size: 1Gi
+    storageClassName: ""
+  # No pod in this chart calls the Kubernetes API, so no service account token is mounted.
+  # Set true only if the bundled agent must discover or deploy certificates in this cluster; the
+  # server pod (which the agent shares) then mounts the token of the namespace's default service
+  # account, which has only the RBAC you grant it.
+  automountServiceAccountToken: false
+  acme:
+    # ACME_DIRECTORY_URL: the ACME CA's directory. Let's Encrypt production by default; use
+    # https://acme-staging-v02.api.letsencrypt.org/directory while testing, or any other ACME CA.
+    directoryUrl: https://acme-v02.api.letsencrypt.org/directory
+    # ACME_ACCOUNT_EMAIL: contact on the ACME account; the CA sends expiry and policy notices here.
+    accountEmail: ""
+    # External account binding, for a CA that requires it (ZeroSSL, Google Trust Services, SSL.com):
+    # the key id the CA issues (ACME_EAB_KEY_ID). Its HMAC key is ACME_EAB_HMAC_KEY in existingSecret.
+    eab:
+      keyId: ""
+  extraEnv: []
+  extraEnvFrom: []
+
+# Extra CA certificates trusted by the server, the notifier and the bundled agent (a private ACME
+# CA such as step-ca, a TLS-inspecting proxy, an internal SMTP relay or OIDC provider). Name a
+# ConfigMap or a Secret (not both) holding a PEM file with one or more certificates under key:
+#   kubectl create configmap certping-extra-ca --from-file=ca.crt=corp-ca.pem
+#   --set extraCaCerts.configMap=certping-extra-ca
+# The chart then starts those containers through files/java-entrypoint.sh, which copies the JVM
+# trust store to /tmp, adds the certificates and points JAVA_TOOL_OPTIONS at the copy
+# (CERTPING_EXTRA_CA_CERTS, as in the all-in-one image). The web app is not affected.
+extraCaCerts:
+  configMap: ""
+  secret: ""
+  key: ca.crt
+
+# Organization slug the bundled agent belongs to; empty means the first organization created.
+bootstrapAgentOrganization: ""
+
+database:
+  # External PostgreSQL 14 or newer. Set host to use it and turn postgres.enabled off.
+  host: ""
+  port: 5432
+  name: certping
+  username: certping
+  # The password is DB_PASSWORD in existingSecret.
+
+# A single PostgreSQL for evaluation. Use a managed or operator-run database in production.
+postgres:
+  enabled: true
+  # postgres:16.4-alpine, pinned by digest. Bump tag and digest together.
+  image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+  storage:
+    size: 10Gi
+    storageClassName: ""
+
+redis:
+  # The bundled store is Valkey (BSD-3-Clause), which speaks the Redis protocol; the keys keep the
+  # name redis. External Redis or Valkey: set host and turn redis.enabled off. The server sends
+  # REDIS_PASSWORD from existingSecret (create-secret.sh generates it); the bundled Valkey requires
+  # the same password.
+  host: ""
+  port: 6379
+  enabled: true
+  # valkey/valkey:8-alpine (Valkey 8.1.11), pinned by digest. Bump tag and digest together.
+  image: valkey/valkey:8-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
+
+# NetworkPolicies for the release's pods (ingress rules only):
+#   postgres 5432  from the server and the notifier
+#   redis 6379     from the server
+#   server 50051   (internal gRPC on the pod IP, internal token required) from the notifier
+#   notifier 8080  (internal token required on every endpoint but health) from the server
+#   server 8080 and web 3000  from the ingress controller (ingressFrom), the web pods and the
+#                  notifier; with ingressFrom empty, from anywhere, because the controller's
+#                  namespace and labels differ per cluster and these ports are public through
+#                  the Ingress anyway.
+# Egress is not restricted: the server and agents reach certificate authorities, DNS providers,
+# cloud APIs, SMTP and webhook targets that cannot be listed in advance. Add your own egress
+# policy if your cluster needs one. Needs a CNI that enforces NetworkPolicy.
+networkPolicy:
+  enabled: true
+  # Peers allowed to reach the server's HTTP port and the web app, for example:
+  #   - namespaceSelector:
+  #       matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+  ingressFrom: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 185
+  runAsGroup: 0
+  fsGroup: 0
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

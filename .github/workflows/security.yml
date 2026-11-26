@@ -1,0 +1,140 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Security
+
+# Secret scanning (gitleaks) and dependency, Dockerfile and Helm chart scanning
+# (trivy). Both tools are downloaded from their GitHub releases and checked
+# against a pinned SHA-256 before they run, so no third-party Action code runs
+# here. Findings are printed redacted; secret values never appear in logs.
+#
+# Gating: the secret scan always blocks. The trivy scan's mode comes from
+# `exit-code` in .github/trivy.yaml (0 report-only, 1 blocking) and temporary
+# exceptions live in .github/.trivyignore.yaml with an expiry; the job summary
+# states the mode so nobody reads a green run as a clean scan. The Release
+# workflow checks that this workflow's jobs passed for the release commit and
+# records the mode in the release notes. See .github/RELEASING.md.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC: catches new CVEs in unchanged dependencies
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history, so every commit in the PR is scanned
+          persist-credentials: false
+      - name: Install gitleaks 8.30.1 (checksum verified)
+        run: |
+          curl -fsSLo gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+      - name: Scan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            ./gitleaks git --redact --no-banner --log-opts="$BASE_SHA..$HEAD_SHA" .
+          else
+            ./gitleaks git --redact --no-banner .
+          fi
+
+  trivy:
+    name: Dependency and config scan (trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Trivy resolves the Java dependency tree from the local Maven repository. With an empty
+      # one it asks Maven Central for every POM and gets rate limited (HTTP 429), so fill it first.
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: apps/*/pom.xml
+      - name: Fill the local Maven repository
+        run: |
+          for app in server agent notifier; do
+            (cd "apps/$app" && mvn -B -ntp -q dependency:go-offline)
+          done
+      - name: Install trivy 0.76.1 (checksum verified)
+        run: |
+          curl -fsSLo trivy.tgz https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz
+          echo "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+      - name: Today's date (one database cache per day)
+        id: day
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - name: Cache vulnerability database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.day.outputs.day }}
+          restore-keys: trivy-db-
+      - name: Check the exception file
+        run: |
+          # Every accepted finding must carry an expiry and a statement, so an
+          # exception cannot be silent or permanent.
+          f=.github/.trivyignore.yaml
+          ids=$(grep -cE '^\s*- id:' "$f" || true)
+          expiries=$(grep -cE '^\s*expired_at:' "$f" || true)
+          statements=$(grep -cE '^\s*statement:' "$f" || true)
+          echo "Accepted exceptions: $ids (with expiry: $expiries, with statement: $statements)"
+          if [ "$ids" != "$expiries" ] || [ "$ids" != "$statements" ]; then
+            echo "::error file=$f::Each entry in $f needs an id, an expired_at date and a statement"
+            exit 1
+          fi
+      - name: Scan (HIGH and CRITICAL with a fix available)
+        run: |
+          mode=$(awk '/^exit-code:/ { print ($2 == "1") ? "blocking" : "report-only" }' .github/trivy.yaml)
+          echo "Scan mode: ${mode:-report-only} (exit-code in .github/trivy.yaml)"
+          ./trivy fs --config .github/trivy.yaml --offline-scan --format json --output trivy.json .
+          # The exit-code from the config applies to the scan above: in blocking
+          # mode the step has already failed on any open finding by this point.
+          ./trivy convert --scanners vuln,misconfig --format table trivy.json
+      - name: Summary
+        if: always()
+        run: |
+          [ -f trivy.json ] || exit 0
+          mode=$(awk '/^exit-code:/ { print ($2 == "1") ? "blocking" : "report-only" }' .github/trivy.yaml)
+          {
+            echo "### Trivy: fixable HIGH and CRITICAL findings"
+            echo
+            if [ "$mode" = "blocking" ]; then
+              echo "Mode: **blocking**. A green job means no fixable HIGH or CRITICAL finding is open (accepted exceptions excluded)."
+            else
+              echo "Mode: **report-only**. A green job does **not** mean the scan is clean; the findings below are open. The switch to blocking is exit-code in .github/trivy.yaml (see .github/RELEASING.md)."
+            fi
+            echo
+            echo "Accepted exceptions (\`.github/.trivyignore.yaml\`): $(grep -cE '^\s*- id:' .github/.trivyignore.yaml || true)"
+            echo
+            echo "| Target | Critical | High | Misconfig |"
+            echo "| --- | ---: | ---: | ---: |"
+            jq -r '.Results[]? | [.Target,
+                ([.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length),
+                ([.Vulnerabilities[]? | select(.Severity=="HIGH")] | length),
+                ([.Misconfigurations[]?] | length)]
+              | select(.[1] + .[2] + .[3] > 0) | "| \(.[0]) | \(.[1]) | \(.[2]) | \(.[3]) |"' trivy.json
+          } >> "$GITHUB_STEP_SUMMARY"

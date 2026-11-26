@@ -1,0 +1,15 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+lab.test:53 {
+    file /zones/db.lab.test {
+        reload 1s
+    }
+    log
+    errors
+}
+
+.:53 {
+    forward . 1.1.1.1 8.8.8.8
+    errors
+}

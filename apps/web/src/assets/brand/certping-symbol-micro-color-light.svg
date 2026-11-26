@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">CertPing Symbol Micro Color Light</title>
+  <desc id="desc">CertPing open-C signal mark with a central verification node and outbound endpoint.</desc>
+  <g id="certping-symbol">
+    <path d="M 284.953 347.695 A 132.000 132.000 0 1 1 284.953 164.305" fill="none" stroke="#12D6C5" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 244.670 308.794 A 76.000 76.000 0 1 1 244.670 203.206" fill="none" stroke="#2563EB" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="190" cy="256" r="34" fill="#0B132B"/>
+    <circle cx="190" cy="256" r="10" fill="#FFFFFF"/>
+    <path d="M 222 256 H 332" fill="none" stroke="#0B132B" stroke-width="28" stroke-linecap="round"/>
+    <circle cx="354" cy="256" r="20" fill="#0B132B"/>
+  </g>
+</svg>

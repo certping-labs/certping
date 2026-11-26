@@ -1,0 +1,7 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars

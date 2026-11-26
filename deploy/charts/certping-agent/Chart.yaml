@@ -1,0 +1,20 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: certping-agent
+description: >-
+  A CertPing agent for a network or cluster: issues and deploys certificates there and keeps the
+  private keys in that network's secret manager. Connects to CertPing over outbound HTTPS only.
+type: application
+version: 0.0.1-beta
+appVersion: "0.0.1-beta"
+home: https://github.com/certping-labs/certping
+maintainers:
+  - name: Chennarao Vemula
+    email: chenna@certping.com
+    url: https://github.com/chenna-certping
+sources:
+  - https://github.com/certping-labs/certping
+annotations:
+  artifacthub.io/license: Apache-2.0

@@ -1,0 +1,32 @@
+CertPing is starting at {{ include "certping.url" . }}
+
+Sign in as admin. create-secret.sh generated the first password and it is never logged; read it
+from the Secret:
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Values.existingSecret }} \
+    -o jsonpath='{.data.BOOTSTRAP_SUPER_ADMIN_PASSWORD}' | base64 -d; echo
+You choose a new password at the first sign-in. (A Secret without the BOOTSTRAP_SUPER_ADMIN_*
+keys makes the web app ask the first visitor to create the admin instead.)
+{{- if .Values.bundledAgent.enabled }}
+
+The bundled agent runs beside the server and connects once the first organization exists.
+{{- end }}
+
+Agents in other networks: open Organization & Access, then the Organization tab, then your
+organization, and use Add agent on its Agents card. Then install the certping-agent chart (or
+run the docker command shown) with that token.
+
+Back up the database and the "{{ .Values.existingSecret }}" Secret: its keys decrypt stored secrets.
+{{- if .Values.redis.enabled }}
+
+The bundled Valkey (Redis compatible) requires the REDIS_PASSWORD key of that Secret. A Secret
+made by an older create-secret.sh lacks it; add one before upgrading:
+  kubectl -n {{ .Release.Namespace }} patch secret {{ .Values.existingSecret }} --type merge \
+    -p "{\"stringData\":{\"REDIS_PASSWORD\":\"$(openssl rand -hex 32)\"}}"
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+
+NetworkPolicies limit who reaches PostgreSQL, Valkey, the internal gRPC port and the notifier.
+{{- if not .Values.networkPolicy.ingressFrom }}
+Set networkPolicy.ingressFrom to your ingress controller's namespace to limit the HTTP ports too.
+{{- end }}
+{{- end }}

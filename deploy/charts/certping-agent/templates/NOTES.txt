@@ -1,0 +1,12 @@
+The CertPing agent {{ .Release.Name }} connects out to {{ .Values.serverUrl }} with the token in
+Secret "{{ .Values.tokenSecret.name }}" (key "{{ .Values.tokenSecret.key }}"). It shows as connected on the
+organization's Agents card (Organization & Access, then Organization, then Agents).
+{{- if gt (int .Values.replicas) 1 }}
+
+WARNING: replicas is {{ .Values.replicas }} and every replica uses the same token. Each replica opens up
+to CERTPING_AGENT_MAX_CONCURRENT_JOBS polls (default 8), and the server allows 8 open polls per
+token by default (certping.transport.max-concurrent-polls-per-token). Polls over the limit are
+refused. Either raise that server setting (env CERTPING_TRANSPORT_MAX_CONCURRENT_POLLS_PER_TOKEN)
+to at least replicas x jobs, lower CERTPING_AGENT_MAX_CONCURRENT_JOBS with extraEnv, or install
+the chart once per agent, each with its own token.
+{{- end }}

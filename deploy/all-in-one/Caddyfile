@@ -1,0 +1,41 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# All-in-one: every service is on localhost. CERTPING_SITE_ADDRESS is ":80" for http://localhost,
+# or the DNS name, where Caddy obtains and renews the TLS certificate from Let's Encrypt.
+{
+	storage file_system {
+		root /var/lib/certping/caddy
+	}
+}
+
+{$CERTPING_SITE_ADDRESS} {
+	encode zstd gzip
+
+	@server path /api/* /.well-known/* /oauth2/* /login/oauth2/*
+	handle @server {
+		# API responses are never framed or sniffed and leak no full Referer.
+		header {
+			X-Content-Type-Options nosniff
+			X-Frame-Options DENY
+			Referrer-Policy strict-origin-when-cross-origin
+		}
+		# Agents long-poll the gateway for up to 25 seconds.
+		reverse_proxy localhost:8080 {
+			transport http {
+				read_timeout 60s
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy localhost:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

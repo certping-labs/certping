@@ -1,0 +1,32 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+node_modules
+.next
+
+.git
+.github
+.vscode
+.gitlab-ci.yml
+.gitlab
+
+deploy
+archive
+artifacts
+docs
+deploy
+scripts/*
+tests
+*.log
+*.md
+
+# Secrets and local environment material must never enter image build context.
+
+.env
+.env.*
+env
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx

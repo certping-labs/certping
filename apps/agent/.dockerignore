@@ -1,0 +1,50 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Ignore scan results
+local/scan-results/
+scan-results/
+# Local development folder
+local/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.iml
+
+# Maven
+target/
+.m2/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+*.pem
+*.key
+
+# Node (if any frontend)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml

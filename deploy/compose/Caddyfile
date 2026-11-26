@@ -1,0 +1,38 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# One public address for CertPing. CERTPING_SITE_ADDRESS is ":80" for a laptop quickstart, or the
+# server's DNS name (certping.example.com) for a real install, where Caddy obtains and renews the
+# TLS certificate from Let's Encrypt by itself (ports 80 and 443 must reach this machine).
+
+{$CERTPING_SITE_ADDRESS} {
+	encode zstd gzip
+
+	# API, agent gateway, JWKS and SSO callbacks go to the server; everything else is the web app.
+	@server path /api/* /.well-known/* /oauth2/* /login/oauth2/*
+	handle @server {
+		# API responses are never framed or sniffed and leak no full Referer.
+		header {
+			X-Content-Type-Options nosniff
+			X-Frame-Options DENY
+			Referrer-Policy strict-origin-when-cross-origin
+		}
+		# Agents long-poll the gateway for up to 25 seconds.
+		reverse_proxy server:8080 {
+			transport http {
+				read_timeout 60s
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
