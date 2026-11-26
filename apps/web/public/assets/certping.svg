@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">CertPing</title>
+  <desc id="desc">CertPing open-C signal mark with a central verification node and outbound endpoint.</desc>
+  <!--
+    Official symbol geometry, kept in sync with src/assets/brand/certping-symbol-color-{dark,light}.svg.
+    Those two are imported as modules by CertPingBrand; the credential provider cards reference logos
+    by public URL instead, so this file carries both surface variants in one asset. The three arcs are
+    brand colours and read anywhere. The node, connector and endpoint are monochrome and must flip
+    with the surface or they disappear. Media queries still apply to an SVG loaded through <img>.
+  -->
+  <style>
+    .cp-mono { fill: #0B132B; stroke: #0B132B; }
+    .cp-mono-inverse { fill: #FFFFFF; }
+    @media (prefers-color-scheme: dark) {
+      .cp-mono { fill: #FFFFFF; stroke: #FFFFFF; }
+      .cp-mono-inverse { fill: #0B132B; }
+    }
+  </style>
+  <g id="certping-symbol" transform="translate(256 256) scale(1.244444) translate(-216 -256)">
+    <path d="M 320.931 360.384 A 156.000 156.000 0 1 1 320.931 151.616" fill="none" stroke="#12D6C5" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 286.746 329.604 A 110.000 110.000 0 1 1 286.746 182.396" fill="none" stroke="#06B6D4" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 252.561 298.824 A 64.000 64.000 0 1 1 252.561 213.176" fill="none" stroke="#2563EB" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle class="cp-mono" cx="205" cy="256" r="32"/>
+    <circle class="cp-mono-inverse" cx="205" cy="256" r="10"/>
+    <path class="cp-mono" d="M 235 256 H 358" fill="none" stroke-width="22" stroke-linecap="round"/>
+    <circle class="cp-mono" cx="378" cy="256" r="18"/>
+  </g>
+</svg>

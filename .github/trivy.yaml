@@ -1,0 +1,29 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Trivy filesystem scan used by `make scan-deps` and the security workflow.
+# Lockfiles and manifests (pnpm-lock.yaml, pom.xml) for dependency CVEs,
+# Dockerfiles and Helm charts for misconfiguration.
+scan:
+  scanners:
+    - vuln
+    - misconfig
+  skip-dirs:
+    - "**/node_modules"
+    - "**/target"
+    - "**/.next"
+    - "apps/web/e2e"
+severity:
+  - HIGH
+  - CRITICAL
+vulnerability:
+  ignore-unfixed: true
+# Temporarily accepted findings, each with an owner, a reason and an expiry.
+# Trivy re-reports an entry once its expired_at date has passed.
+ignorefile: .github/.trivyignore.yaml
+format: table
+# Scan mode. Fixable HIGH and CRITICAL findings fail the Security workflow and
+# therefore block merges and releases. Findings that genuinely do not affect
+# CertPing must use a narrow, expiring entry in .github/.trivyignore.yaml with
+# an owner and rationale.
+exit-code: 1

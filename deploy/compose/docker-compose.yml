@@ -1,0 +1,284 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# CertPing on one machine: the quickstart on a laptop and the supported single-server install.
+#
+#   ./setup.sh                 # once: writes .env with fresh secrets
+#   docker compose up -d --build
+#
+# Services: Caddy (TLS and routing), web, server, notifier, a bundled agent, PostgreSQL and Valkey
+# (Redis compatible, under the service name redis).
+# No message broker and no cloud account are needed: the server queues work in PostgreSQL and agents
+# connect to it over HTTPS. See README.md for production notes and for adding agents elsewhere.
+
+name: certping
+
+x-java: &java
+  restart: unless-stopped
+  # java-entrypoint.sh starts the service as the image does, after adding the certificates of
+  # CERTPING_EXTRA_CA_CERTS (if set) to the JVM's trust store.
+  entrypoint: ["/bin/sh", "/etc/certping/java-entrypoint.sh"]
+  environment: &java-env
+    # The images carry the OpenTelemetry agent; it stays off unless you point it at a collector.
+    OTEL_JAVAAGENT_ENABLED: ${OTEL_JAVAAGENT_ENABLED:-false}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    SPRING_PROFILES_ACTIVE: selfhosted
+    # Extra CA certificates to trust (a private ACME CA such as step-ca, a TLS-inspecting proxy, an
+    # internal SMTP relay): set CERTPING_EXTRA_CA_CERTS in .env to a PEM file on this machine. It
+    # is mounted at /etc/certping/extra-ca.pem (see x-java-volumes) and trusted by server,
+    # notifier and agent.
+    CERTPING_EXTRA_CA_CERTS: ${CERTPING_EXTRA_CA_CERTS:+/etc/certping/extra-ca.pem}
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: "5"
+
+# Mounted into server, notifier and agent. Without CERTPING_EXTRA_CA_CERTS an empty placeholder
+# stands in for the PEM file and is not read.
+x-java-volumes:
+  - &java-entrypoint ./java-entrypoint.sh:/etc/certping/java-entrypoint.sh:ro
+  - &java-extra-ca ${CERTPING_EXTRA_CA_CERTS:-./no-extra-ca.pem}:/etc/certping/extra-ca.pem:ro
+
+# Networks keep each service to the peers it needs:
+#   edge      proxy, web, server and agent; the only network with published ports and internet access
+#             for the server and the agent (CAs, DNS providers, cloud APIs, webhooks)
+#   notifier  internal: the server and the notifier only. Web, the proxy and the agent cannot reach
+#             the notifier's HTTP API or the server's internal gRPC port (50051), which the server
+#             opens on its address on this network only (server-grpc)
+#   data      internal: PostgreSQL and Valkey, for the server and the notifier
+#   mail      the notifier's way out to your SMTP server (and to mailpit)
+networks:
+  edge: {}
+  notifier:
+    internal: true
+  data:
+    internal: true
+  mail: {}
+
+services:
+  proxy:
+    # caddy:2.8.4-alpine
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    restart: unless-stopped
+    networks: [edge]
+    ports:
+      - "${CERTPING_HTTP_PORT:-80}:80"
+      - "${CERTPING_HTTPS_PORT:-443}:443"
+    environment:
+      CERTPING_SITE_ADDRESS: ${CERTPING_SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      server:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  # The application images default to the release this kit belongs to, like the all-in-one image
+  # (never :latest). Builds from source use CERTPING_VERSION=dev:
+  #   CERTPING_VERSION=dev docker compose build && CERTPING_VERSION=dev docker compose up -d
+  web:
+    image: ${CERTPING_IMAGE_PREFIX:-ghcr.io/certping-labs}/certping-web:${CERTPING_VERSION:-0.0.1-beta}
+    build:
+      context: ../../apps/web
+      args:
+        # The browser calls the API on its own origin (Caddy routes /api to the server), so one
+        # image serves any domain. same-origin is also the Dockerfile default and what releases use.
+        NEXT_PUBLIC_API_URL: same-origin
+        # Dots in the version become hyphens in the Dockerfile (Next.js deployment id rules).
+        NEXT_DEPLOYMENT_ID: ${CERTPING_VERSION:-selfhosted}
+    restart: unless-stopped
+    networks: [edge]
+    environment:
+      # The public URL. The Next.js server renders API links from it (same-origin on the server);
+      # it never calls the API itself.
+      CERTPING_URL: ${CERTPING_URL}
+    healthcheck:
+      # The image has no curl; Node's fetch asks the app's own health route.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  server:
+    <<: *java
+    image: ${CERTPING_IMAGE_PREFIX:-ghcr.io/certping-labs}/certping-server:${CERTPING_VERSION:-0.0.1-beta}
+    build:
+      context: ../../apps/server
+      args:
+        CERTPING_VERSION: ${CERTPING_VERSION:-0.0.1-beta}
+    env_file: .env
+    environment:
+      <<: *java-env
+      # The release this server runs: the agent image tag shown in the "Add agent" command.
+      CERTPING_VERSION: ${CERTPING_VERSION:-0.0.1-beta}
+      DB_URL: jdbc:postgresql://postgres:5432/certping
+      # Server connection pool. 40 covers a burst of agent results plus the API and jobs; with the
+      # notifier's 10 it stays well under PostgreSQL's default max_connections of 100.
+      DB_POOL_SIZE: ${CERTPING_SERVER_DB_POOL_SIZE:-40}
+      REDIS_HOST: redis
+      CERTPING_LOCAL_SECRET_DIR: /var/lib/certping/secrets
+      # The internal gRPC port opens on the server's address on the notifier network only; every
+      # call also needs CERTPING_INTERNAL_TOKEN.
+      INTERNAL_GRPC_BIND_ADDRESS: server-grpc
+    networks:
+      edge: {}
+      data: {}
+      notifier:
+        aliases: [server-grpc]
+    volumes:
+      - agent-secrets:/var/lib/certping/secrets
+      - *java-entrypoint
+      - *java-extra-ca
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 12
+
+  notifier:
+    <<: *java
+    image: ${CERTPING_IMAGE_PREFIX:-ghcr.io/certping-labs}/certping-notifier:${CERTPING_VERSION:-0.0.1-beta}
+    build:
+      context: ../../apps/notifier
+    env_file: .env
+    environment:
+      <<: *java-env
+      DB_URL: jdbc:postgresql://postgres:5432/certping
+      CERTPING_INTERNAL_URL: http://server:8080
+      CERT_MANAGER_GRPC_ADDR: server-grpc:50051
+      # MAIL_HOST, MAIL_PORT, MAIL_USERNAME, MAIL_PASSWORD, EMAIL_FROM, MAIL_STARTTLS and
+      # MAIL_SMTP_AUTH come from .env (env_file above).
+    # Not on edge: only the server reaches the notifier, and every request needs the internal token.
+    networks: [notifier, data, mail]
+    volumes:
+      - *java-entrypoint
+      - *java-extra-ca
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # The agent that ships with the server. It reaches the server on the internal network with the
+  # bootstrap token and shares the LOCAL secret store volume. Agents in other networks connect to
+  # CERTPING_URL with a token made in Organization & Access, then the Organization tab, then
+  # Add agent on the Agents card.
+  agent:
+    <<: *java
+    image: ${CERTPING_IMAGE_PREFIX:-ghcr.io/certping-labs}/certping-agent:${CERTPING_VERSION:-0.0.1-beta}
+    build:
+      context: ../../apps/agent
+    environment:
+      <<: *java-env
+      CERTPING_SERVER_URL: http://server:8080
+      CERTPING_AGENT_TOKEN: ${CERTPING_BOOTSTRAP_AGENT_TOKEN}
+      CERTPING_AGENT_BUNDLED: "true"
+      AGENT_SECRET_STORE_PROVIDER: LOCAL
+      CERTPING_LOCAL_SECRET_KEY: ${CERTPING_LOCAL_SECRET_KEY}
+      CERTPING_LOCAL_SECRET_DIR: /var/lib/certping/secrets
+      ACME_DIRECTORY_URL: ${ACME_DIRECTORY_URL:-https://acme-v02.api.letsencrypt.org/directory}
+      ACME_ACCOUNT_EMAIL: ${ACME_ACCOUNT_EMAIL:-}
+      ACME_EAB_KEY_ID: ${ACME_EAB_KEY_ID:-}
+      ACME_EAB_HMAC_KEY: ${ACME_EAB_HMAC_KEY:-}
+    networks: [edge]
+    volumes:
+      - agent-secrets:/var/lib/certping/secrets
+      - *java-entrypoint
+      - *java-extra-ca
+    depends_on:
+      server:
+        condition: service_healthy
+
+  postgres:
+    # postgres:16.4-alpine, pinned by digest, the same image as the Helm chart. A new major
+    # version needs a data upgrade (pg_upgrade) and, from 18 on, a different volume path.
+    image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: certping
+      POSTGRES_USER: ${DB_USERNAME:-certping}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    networks: [data]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-certping} -d certping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Valkey (BSD-3-Clause), a drop-in for Redis: the server speaks the Redis protocol to it, so the
+  # service keeps the name redis and the REDIS_* settings. It holds only short-lived state (revoked
+  # access tokens, rate-limit counters, the feature flag version), so it starts empty on a new volume.
+  redis:
+    # valkey/valkey:8-alpine (Valkey 8.1.11)
+    image: valkey/valkey:9-alpine@sha256:c8e2d17498838af5d91e12eb7c11220b3434a7b7131a333e3af52ad5e0b80882
+    restart: unless-stopped
+    # The image's valkey user. The command below bypasses the image entrypoint, which would
+    # otherwise drop root itself; a new volume takes /data's ownership (valkey) from the image.
+    user: "999:1000"
+    networks: [data]
+    environment:
+      # setup.sh generates it; the server reads the same value from .env. An .env from an older
+      # setup.sh lacks it: ./setup.sh --upgrade adds it (and any other new keys) in place.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is missing from .env (written by an older setup.sh). To fix it run ./setup.sh --upgrade and then docker compose up -d}
+      # valkey-cli reads the password from here for the health check (it honors REDISCLI_AUTH).
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    # The password goes in as configuration on stdin, so it is not on the command line.
+    command:
+      - sh
+      - -c
+      - |
+        exec valkey-server - <<EOF
+        requirepass "$$REDIS_PASSWORD"
+        save 60 1
+        appendonly yes
+        EOF
+    volumes:
+      # A new volume: Valkey 8 cannot read the RDB format 12 that the earlier redis:7.4 image wrote
+      # to redis-data. That old volume can be removed (docker volume rm certping_redis-data).
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Optional local mail catcher for trying notifications without an SMTP server:
+  #   docker compose --profile mailpit up -d   then open http://localhost:8025
+  # with MAIL_HOST=mailpit MAIL_PORT=1025 MAIL_SMTP_AUTH=false MAIL_STARTTLS=false in .env.
+  mailpit:
+    # axllent/mailpit:v1.20
+    image: axllent/mailpit:v1.34@sha256:23a2ef85bc50853ab3093645d1d64679afd8887e89da5e48a88940c172591a4e
+    profiles: ["mailpit"]
+    restart: unless-stopped
+    networks: [mail]
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  # Gives the shared secrets volume to the user the server and agent run as (185), once.
+  volume-init:
+    # busybox:1.36
+    image: busybox:1.38@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+    command: ["sh", "-c", "chown 185:0 /secrets && chmod 0770 /secrets"]
+    network_mode: none
+    volumes:
+      - agent-secrets:/secrets
+
+volumes:
+  postgres-data:
+  valkey-data:
+  agent-secrets:
+  caddy-data:
+  caddy-config:

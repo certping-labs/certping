@@ -1,0 +1,43 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# gitleaks configuration: the default rules, plus a narrow allow-list for
+# known false positives. Every entry says why it is safe. Do not add a path here
+# to silence a finding you have not looked at; rotate the secret instead.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Throwaway keys and dummy tokens generated for unit tests"
+targetRules = ["private-key", "generic-api-key", "jwt", "slack-webhook-url"]
+paths = [
+  '''apps/(agent|server|notifier)/src/test/''',
+  '''apps/web/src/.*\.test\.tsx?$''',
+  '''apps/web/src/test/fixtures/''',
+]
+
+[[allowlists]]
+description = "PEM header literals and type names in key-parsing code, and an OpenAPI example URL"
+paths = [
+  '''apps/agent/src/main/java/com/certping/agent/deployment/adapter/azure/AzurePemSupport\.java''',
+  '''apps/agent/src/main/java/com/certping/agent/scep/RaIdentity\.java''',
+  '''apps/server/src/main/java/com/certmanagement/service/cert/export/AgentCertificateBundleParser\.java''',
+  '''apps/server/src/main/java/com/certmanagement/support/integrations/api/model/CreateIntegrationRequest\.java''',
+]
+
+[[allowlists]]
+description = "Fake CertPing DNS keys the e2e lab makes up at runtime (fixed lab prefix plus random hex) for its local DNS API stand-in"
+targetRules = ["generic-api-key"]
+paths = ['''deploy/e2e-lab/(e2e|load)\.py''']
+regexTarget = "line"
+regexes = ['''cpk_live_lab12345''']
+condition = "AND"
+
+[[allowlists]]
+description = "Empty OIDC client secret placeholder in the .env template that setup.sh writes"
+targetRules = ["generic-api-key"]
+paths = ['''deploy/compose/setup\.sh''']
+regexTarget = "line"
+regexes = ['''CERTPING_OIDC_CLIENT_SECRET=''']
+condition = "AND"

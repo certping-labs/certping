@@ -1,0 +1,81 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Self-hosted install (Docker Compose on one server, or Helm without Azure).
+#
+# Everything here derives from a handful of environment variables that deploy/compose/setup.sh
+# generates into .env: CERTPING_URL, the database and Redis, the JWT keys, the password pepper, the
+# token secrets, and the shared keys for the agent gateway and the LOCAL secret store. No Azure
+# service is needed: messages go through PostgreSQL and agents connect over HTTPS.
+
+spring:
+  datasource:
+    url:      ${DB_URL:jdbc:postgresql://postgres:5432/certping}
+    username: ${DB_USERNAME:certping}
+    password: ${DB_PASSWORD}
+    hikari:
+      pool-name: cert-manager
+      # 40: a load test with 1,000 certificates and 200 agents kept 19 of 20 connections busy (agent
+      # results, gateway polls, the API and jobs at once). The bundled PostgreSQL allows 100, which
+      # covers this pool, the notifier's 10 and headroom. Raise max_connections first if you raise this.
+      maximum-pool-size: ${DB_POOL_SIZE:40}
+      connection-init-sql: >-
+        SELECT set_config('lock_timeout', '${DB_LOCK_TIMEOUT:5s}', false),
+               set_config('statement_timeout', '${DB_STATEMENT_TIMEOUT:30s}', false),
+               set_config('idle_in_transaction_session_timeout', '${DB_IDLE_IN_TRANSACTION_TIMEOUT:30min}', false)
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+  jpa:
+    show-sql: false
+
+certping:
+  agent-secret-store:
+    provider: ${CERTPING_AGENT_SECRET_STORE_PROVIDER:LOCAL}
+
+
+
+app:
+  base-url: ${CERTPING_URL}
+  dashboard-base-url: ${CERTPING_URL}/dashboard
+  frontend-base-url: ${CERTPING_URL}
+  frontend:
+    redirect-url: ${CERTPING_URL}/auth/callback
+    allowed-origins: ${CERTPING_URL}
+  # First admin: created through first-run setup in the web app. Set BOOTSTRAP_SUPER_ADMIN_USERNAME,
+  # _EMAIL and _PASSWORD only for an unattended install (see application.yaml).
+  bootstrap-super-admin:
+    username: ${BOOTSTRAP_SUPER_ADMIN_USERNAME:}
+    email: ${BOOTSTRAP_SUPER_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_SUPER_ADMIN_PASSWORD:}
+    display-name: ${BOOTSTRAP_SUPER_ADMIN_DISPLAY_NAME:}
+
+cors:
+  allowed-origins: ${CERTPING_URL}
+  allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+  allowed-headers: "*"
+  expose-headers: Authorization,X-Request-Id
+  allow-credentials: true
+  max-age: 3600
+
+jwt:
+  issuer: ${JWT_ISSUER:${CERTPING_URL}}
+  expiration: ${JWT_EXPIRATION:3600000}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+
+notification-service:
+  base-url: ${NOTIFICATION_SERVICE_BASE_URL:http://notifier:8080}
+
+public-status:
+  agent-base-url: ${STATUS_AGENT_BASE_URL:http://agent:8080}
+
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+
+logging:
+  level:
+    root: WARN
+    com.certmanagement: INFO

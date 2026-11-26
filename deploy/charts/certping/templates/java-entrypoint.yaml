@@ -1,0 +1,15 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if include "certping.extraCa.enabled" . }}
+# Runs before the server, notifier and bundled agent to add extraCaCerts to the JVM trust store.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "certping.fullname" . }}-java-entrypoint
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+data:
+  java-entrypoint.sh: |-
+    {{- .Files.Get "files/java-entrypoint.sh" | nindent 4 }}
+{{- end }}

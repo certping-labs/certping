@@ -1,0 +1,12 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+node_modules
+.next
+dist
+build
+coverage
+temp
+.pnpm-store
+pnpm-lock.yaml
+certificate.pem

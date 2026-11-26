@@ -1,0 +1,775 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release
+
+# Maintainer-triggered only: merging to main never releases anything.
+# Run it from the Actions tab on the main branch with a version such as
+# v0.1.0-rc.1. It checks that CI and the Security workflow already passed for
+# that exact commit, tests the commit again, builds the four application images
+# for linux/amd64 and linux/arm64 on native runners, assembles the all-in-one
+# image from them by digest, writes a CycloneDX SBOM per image, a
+# release-metadata.json and a SHA256SUMS file, signs and attests what it can
+# (public repository only), and opens a DRAFT GitHub release for review. No tag
+# exists until a maintainer publishes the draft by hand; publishing creates the
+# tag on the release commit. See .github/RELEASING.md.
+#
+# Approval gates (GitHub environments):
+#   release         every run, before anything is built (the `approve` job)
+#   release-stable  additionally, for versions without a pre-release suffix
+#                   (the `approve-stable` job)
+# Each gate is one job, so a run asks for at most two approvals. Until both
+# environments exist with required reviewers and a deployment branch rule
+# limited to main, referencing them here creates them without protection and
+# the gate is not real. Repository settings this workflow needs:
+#   - Environments `release` and `release-stable`, each with required reviewers
+#     and "Deployment branches and tags" set to the main branch only.
+#   - Settings > Actions > General: workflow permissions "Read repository
+#     contents" (each job asks for what it needs).
+#   - A public repository: native arm64 runners (ubuntu-24.04-arm), keyless
+#     signing and artifact attestations are free only on public repositories.
+#   - GHCR: after the first push, set each package (certping, certping-web,
+#     certping-server, certping-agent, certping-notifier) to public and link it
+#     to this repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag, e.g. v0.0.1-beta or v0.1.0-rc.1 (SemVer with a leading v)"
+        required: true
+        type: string
+      publish_images:
+        description: "Push images to GHCR (leave off for a dry run)"
+        required: true
+        type: boolean
+        default: false
+      stable_release_checklist_done:
+        description: "Stable versions only (no -alpha/-beta/-rc): the stable-release checklist in .github/RELEASING.md is complete"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate version, commit and checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read # read the CI and Security results of the release commit
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      image_tag: ${{ steps.check.outputs.image_tag }}
+      scan_mode: ${{ steps.scan.outputs.scan_mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check version and commit
+        id: check
+        env:
+          VERSION: ${{ inputs.version }}
+          STABLE_OK: ${{ inputs.stable_release_checklist_done }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Run releases from main (this run is on $GITHUB_REF)"; exit 1
+          fi
+          if ! printf '%s' "$VERSION" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)(\.[1-9][0-9]*)?)?$'; then
+            echo "::error::Version must look like v0.1.0, v0.0.1-beta or v0.1.0-rc.1"; exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::Tag $VERSION already exists. Published tags are never moved or reused."; exit 1
+          fi
+          # Finds published releases. Drafts are visible only to a token with write access;
+          # the draft job checks for them again before it creates one.
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::A release named $VERSION already exists."; exit 1
+          fi
+          sha=$(git rev-parse HEAD)
+          git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha is not on main"; exit 1; }
+          case "$VERSION" in *-*) pre=true ;; *) pre=false ;; esac
+          if [ "$pre" = "false" ] && [ "$STABLE_OK" != "true" ]; then
+            echo "::error::$VERSION is a stable version. Complete the stable-release checklist in .github/RELEASING.md and re-run with stable_release_checklist_done."; exit 1
+          fi
+          {
+            echo "sha=$sha"
+            echo "prerelease=$pre"
+            echo "image_tag=${VERSION#v}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION from $sha (prerelease: $pre)"
+
+      # The Security workflow runs on every push to main; the Release workflow
+      # never calls it. Instead the check runs recorded against the exact commit
+      # are read here, so a release can only be cut from a commit whose CI and
+      # security checks already passed. The names are job names: `ci-required`
+      # in ci.yml, and the two jobs of security.yml.
+      - name: Require green CI and security checks for this commit
+        env:
+          SHA: ${{ steps.check.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # filter=latest keeps only the most recent run of each check, so a failed re-run
+          # is not hidden by an older success.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?filter=latest&per_page=100" \
+            --jq '.check_runs[] | [.name, .status, .conclusion // "none", .html_url] | @tsv' > check-runs.tsv
+          echo "Check runs recorded for $SHA:"
+          cut -f1-3 check-runs.tsv | sort -u | sed 's/^/  /'
+          missing=""
+          for name in "ci-required" "Secret scan (gitleaks)" "Dependency and config scan (trivy)"; do
+            if ! awk -F'\t' -v n="$name" '$1 == n && $2 == "completed" && $3 == "success" { ok = 1 } END { exit !ok }' check-runs.tsv; then
+              missing="$missing \"$name\""
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::These checks have not passed for $SHA:$missing. Push the commit to main, let CI and Security finish green, then release."
+            exit 1
+          fi
+          echo "CI and Security passed for $SHA"
+
+      # Reads the scan mode from the committed trivy configuration so the
+      # release notes cannot claim a clean dependency scan while it is
+      # report-only.
+      - name: Record the dependency scan mode
+        id: scan
+        run: |
+          code=$(awk '/^exit-code:/ { print $2 }' .github/trivy.yaml)
+          if [ "$code" = "1" ]; then mode=blocking; else mode=report-only; fi
+          echo "scan_mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Dependency scan mode for this release: $mode (.github/trivy.yaml exit-code: ${code:-unset})"
+
+  approve:
+    name: Approve (release environment)
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    environment:
+      name: release
+    steps:
+      - name: Approved
+        env:
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ needs.validate.outputs.sha }}
+        run: echo "Release $VERSION from $SHA approved in the release environment"
+
+  approve-stable:
+    name: Approve (release-stable environment)
+    needs: [validate, approve]
+    if: needs.validate.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    environment:
+      name: release-stable
+    steps:
+      - name: Approved
+        env:
+          VERSION: ${{ inputs.version }}
+        run: echo "Stable release $VERSION approved in the release-stable environment"
+
+  # Runs while the approval waits; the images are built only once it passed.
+  test:
+    name: Test the release commit
+    needs: validate
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      all: true
+
+  sbom:
+    name: SBOM ${{ matrix.app }}
+    needs: [validate, approve, approve-stable]
+    if: >-
+      always() && needs.approve.result == 'success' &&
+      (needs.approve-stable.result == 'success' || needs.approve-stable.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [web, server, agent, notifier]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: matrix.app != 'web'
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: apps/${{ matrix.app }}/pom.xml
+      - name: Java SBOM (CycloneDX, resolved dependency tree)
+        if: matrix.app != 'web'
+        working-directory: apps/${{ matrix.app }}
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          mvn -B -ntp -DskipTests org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeBom \
+            -DoutputFormat=json -DoutputName=bom
+          cp target/bom.json "$GITHUB_WORKSPACE/sbom-$APP.cdx.json"
+      - name: Web SBOM (CycloneDX, from pnpm-lock.yaml)
+        if: matrix.app == 'web'
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: apps/web
+          format: cyclonedx-json
+          output-file: sbom-web.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-sbom-${{ matrix.app }}
+          path: sbom-${{ matrix.app }}.cdx.json
+          retention-days: 14
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.app }} (${{ matrix.arch }})
+    needs: [validate, approve, approve-stable, test]
+    if: >-
+      always() && needs.approve.result == 'success' && needs.test.result == 'success' &&
+      (needs.approve-stable.result == 'success' || needs.approve-stable.result == 'skipped')
+    # Each platform builds on a runner of its own architecture: no emulation, so the web
+    # image's Node build and its native modules (sharp) are built for the platform they run on.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write # push the per-platform image by digest, only when publish_images is on
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [web, server, agent, notifier]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/certping-${{ matrix.app }}
+      PUBLISH: ${{ inputs.publish_images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GHCR
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # CERTPING_VERSION (the release version without the leading v) is baked into the server
+      # image as the agent image tag it shows in the "Add agent" command; the other Java images
+      # ignore it. The web image calls the API on its own origin (NEXT_PUBLIC_API_URL=same-origin,
+      # also the Dockerfile default), so one image serves every domain and kit; NEXT_DEPLOYMENT_ID
+      # identifies the build for Next.js version-skew handling.
+      - name: Build arguments
+        id: args
+        env:
+          APP: ${{ matrix.app }}
+          IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
+        run: |
+          {
+            echo "build_args<<EOF"
+            echo "CERTPING_VERSION=$IMAGE_TAG"
+            if [ "$APP" = "web" ]; then
+              echo "NEXT_PUBLIC_API_URL=same-origin"
+              echo "NEXT_DEPLOYMENT_ID=$IMAGE_TAG"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      # Pushed by digest only; the publish job joins both platforms into one tagged manifest list.
+      - name: Build${{ inputs.publish_images && ' and push by digest' || ' (dry run)' }}
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/${{ matrix.app }}
+          platforms: linux/${{ matrix.arch }}
+          provenance: false
+          build-args: ${{ steps.args.outputs.build_args }}
+          outputs: ${{ inputs.publish_images && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || 'type=cacheonly' }}
+          labels: |
+            org.opencontainers.image.title=certping-${{ matrix.app }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.validate.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.validate.outputs.image_tag }}
+            org.opencontainers.image.vendor=Seaionl Inc.
+      - name: Record the platform digest
+        if: env.PUBLISH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p digests
+          echo "$DIGEST" > "digests/$ARCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: env.PUBLISH == 'true'
+        with:
+          name: digest-${{ matrix.app }}-${{ matrix.arch }}
+          path: digests/${{ matrix.arch }}
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Publish ${{ matrix.app }}
+    needs: [validate, sbom, build]
+    if: inputs.publish_images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write # tag the manifest list and push signatures and attestations
+      id-token: write # keyless signing and attestations, public repo only
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [web, server, agent, notifier]
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/certping-${{ matrix.app }}
+      TAG: ${{ needs.validate.outputs.image_tag }}
+      IS_PUBLIC: ${{ github.event.repository.private == false }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-${{ matrix.app }}-*
+          merge-multiple: true
+          path: digests
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-sbom-${{ matrix.app }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # One manifest list per image: linux/amd64 and linux/arm64. The digest signed and
+      # attested below is the manifest list's.
+      - name: Create the multi-platform manifest
+        id: manifest
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          refs=()
+          for arch in amd64 arm64; do
+            refs+=("$IMAGE@$(cat "digests/$arch")")
+          done
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "${refs[@]}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          docker buildx imagetools inspect "$IMAGE@$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "$IMAGE@$digest" > "image-$APP.txt"
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        if: env.IS_PUBLIC == 'true'
+      - name: Sign image (keyless, public repo only)
+        if: env.IS_PUBLIC == 'true'
+        env:
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      - name: Build provenance attestation (public repo only)
+        if: env.IS_PUBLIC == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+      - name: SBOM attestation for the image (public repo only)
+        if: env.IS_PUBLIC == 'true'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          sbom-path: sbom-${{ matrix.app }}.cdx.json
+          push-to-registry: true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-image-${{ matrix.app }}
+          path: image-${{ matrix.app }}.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  all-in-one:
+    name: Build the all-in-one image
+    # Assembled from the four application images just pushed, by digest, so it carries the same
+    # layers. Only when images are published: without a push there is nothing to assemble from.
+    # Its own steps are package installs on Ubuntu, so the arm64 half runs under QEMU.
+    needs: [validate, publish]
+    if: inputs.publish_images
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/certping
+      IS_PUBLIC: ${{ github.event.repository.private == false }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-image-*
+          merge-multiple: true
+          path: dist
+      - name: Application image digests
+        id: refs
+        run: |
+          for app in server web agent notifier; do
+            ref="$(cat "dist/image-$app.txt")"
+            case "$ref" in *@sha256:*) ;; *) echo "::error::$app is not pinned by digest: $ref"; exit 1 ;; esac
+            echo "$app=$ref" >> "$GITHUB_OUTPUT"
+          done
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: linux/arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/all-in-one/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            CERTPING_VERSION=${{ needs.validate.outputs.image_tag }}
+            SERVER_IMAGE=${{ steps.refs.outputs.server }}
+            WEB_IMAGE=${{ steps.refs.outputs.web }}
+            AGENT_IMAGE=${{ steps.refs.outputs.agent }}
+            NOTIFIER_IMAGE=${{ steps.refs.outputs.notifier }}
+          tags: ${{ env.IMAGE }}:${{ needs.validate.outputs.image_tag }}
+          labels: |
+            org.opencontainers.image.title=certping
+            org.opencontainers.image.description=CertPing all-in-one: server, web, notifier, agent, PostgreSQL, Valkey and Caddy in one container
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.validate.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.validate.outputs.image_tag }}
+            org.opencontainers.image.vendor=Seaionl Inc.
+      - name: Record image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "$IMAGE@$DIGEST" > image-all-in-one.txt
+      # The all-in-one adds PostgreSQL, Valkey, Caddy and Ubuntu packages to the application
+      # layers, so its SBOM is read from the pushed image itself (the linux/amd64 variant).
+      - name: Image SBOM (CycloneDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ github.token }}
+          format: cyclonedx-json
+          output-file: sbom-all-in-one.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        if: env.IS_PUBLIC == 'true'
+      - name: Sign image (keyless, public repo only)
+        if: env.IS_PUBLIC == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      - name: Build provenance attestation (public repo only)
+        if: env.IS_PUBLIC == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: SBOM attestation for the image (public repo only)
+        if: env.IS_PUBLIC == 'true'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-all-in-one.cdx.json
+          push-to-registry: true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-all-in-one
+          path: |
+            image-all-in-one.txt
+            sbom-all-in-one.cdx.json
+          retention-days: 14
+          if-no-files-found: error
+
+  dockerhub:
+    name: Copy the images to Docker Hub
+    # The manifest lists just published to GHCR, copied unchanged: the same digests, and on a public
+    # repository their signatures and attestations too. Runs only when the DOCKERHUB_NAMESPACE
+    # variable and the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets are set (.github/RELEASING.md).
+    needs: [validate, publish, all-in-one]
+    if: inputs.publish_images && vars.DOCKERHUB_NAMESPACE != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+      TAG: ${{ needs.validate.outputs.image_tag }}
+      IS_PUBLIC: ${{ github.event.repository.private == false }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-image-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-all-in-one
+          path: dist
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # image-all-in-one.txt becomes <namespace>/certping, image-<app>.txt <namespace>/certping-<app>.
+      - name: Copy each image by digest
+        run: |
+          for f in dist/image-*.txt; do
+            app="$(basename "$f" .txt)"; app="${app#image-}"
+            if [ "$app" = "all-in-one" ]; then name=certping; else name="certping-$app"; fi
+            src="$(cat "$f")"
+            docker buildx imagetools create --tag "docker.io/$NAMESPACE/$name:$TAG" "$src"
+            echo "$src -> docker.io/$NAMESPACE/$name:$TAG"
+          done
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        if: env.IS_PUBLIC == 'true'
+      - name: Copy signatures and attestations (public repo only)
+        if: env.IS_PUBLIC == 'true'
+        run: |
+          for f in dist/image-*.txt; do
+            app="$(basename "$f" .txt)"; app="${app#image-}"
+            if [ "$app" = "all-in-one" ]; then name=certping; else name="certping-$app"; fi
+            cosign copy --only=sig,att --force "$(cat "$f")" "docker.io/$NAMESPACE/$name:$TAG"
+          done
+
+  charts:
+    name: Publish the Helm charts
+    # Both charts at the release version, pushed to GHCR as OCI artifacts. Their default image tag
+    # is the chart's appVersion, so a chart points at the images of the same release:
+    # helm install certping oci://ghcr.io/certping-labs/charts/certping --version <version>
+    needs: [validate, publish, all-in-one]
+    if: inputs.publish_images
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: oci://ghcr.io/${{ github.repository_owner }}/charts
+      VERSION: ${{ needs.validate.outputs.image_tag }}
+      ACTOR: ${{ github.actor }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      # GitHub-hosted runners ship helm.
+      - run: helm version
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
+      - name: Package and push
+        run: |
+          for chart in certping certping-agent; do
+            helm package "deploy/charts/$chart" --version "$VERSION" --app-version "$VERSION" --destination dist
+            helm push "dist/$chart-$VERSION.tgz" "$REGISTRY"
+          done
+
+  draft:
+    name: Sign artifacts and draft the release
+    needs: [validate, sbom, build, publish, all-in-one]
+    # publish and all-in-one are skipped on a dry run (publish_images off); the draft still
+    # runs then and says that no images were pushed.
+    if: >-
+      always() && needs.sbom.result == 'success' && needs.build.result == 'success' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped') &&
+      (needs.all-in-one.result == 'success' || needs.all-in-one.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the draft release
+      id-token: write # keyless signing of SHA256SUMS, public repo only
+      attestations: write # provenance for the SBOMs and checksums, public repo only
+    env:
+      IS_PUBLIC: ${{ github.event.repository.private == false }}
+      VERSION: ${{ inputs.version }}
+      SHA: ${{ needs.validate.outputs.sha }}
+      PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+      PUBLISH: ${{ inputs.publish_images }}
+      SCAN_MODE: ${{ needs.validate.outputs.scan_mode }}
+    steps:
+      - name: Refuse an existing release or draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # This token can see drafts (contents: write), so a draft left by an earlier run
+          # of the same version is caught here.
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::A release or draft named $VERSION already exists. Delete the old draft first."; exit 1
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      # One machine-readable record of what this run produced. It is covered by
+      # SHA256SUMS, so it is signed and attested with the rest.
+      - name: Release metadata
+        working-directory: dist
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          images='[]'
+          for f in image-*.txt; do
+            [ -f "$f" ] || continue
+            images=$(jq -c --arg app "${f#image-}" --arg ref "$(cat "$f")" '. + [{app: ($app | sub("\\.txt$"; "")), ref: $ref}]' <<< "$images")
+          done
+          sboms='[]'
+          for f in sbom-*.cdx.json; do
+            [ -f "$f" ] || continue
+            sboms=$(jq -c --arg f "$f" '. + [$f]' <<< "$sboms")
+          done
+          jq -n \
+            --arg version "$VERSION" --arg sha "$SHA" --arg repo "$REPO_URL" --arg run "$RUN_URL" \
+            --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg scan "$SCAN_MODE" \
+            --argjson pre "$PRERELEASE" --argjson pushed "$PUBLISH" --argjson public "$IS_PUBLIC" \
+            --argjson images "$images" --argjson sboms "$sboms" '{
+              version: $version, prerelease: $pre, commit: $sha, repository: $repo,
+              workflow_run: $run, built_at: $built,
+              platforms: ["linux/amd64", "linux/arm64"],
+              images: {pushed: $pushed, refs: $images},
+              sboms: $sboms,
+              dependency_scan: {tool: "trivy", mode: $scan,
+                note: (if $scan == "blocking" then "The Security workflow fails on fixable HIGH and CRITICAL findings; it passed for this commit."
+                       else "Report-only: the Security workflow reports fixable HIGH and CRITICAL findings but does not fail on them. This release is not claimed to be free of known vulnerabilities." end)},
+              signing: {images_signed: ($pushed and $public), images_attested: ($pushed and $public),
+                        checksums_signed: $public, artifacts_attested: $public,
+                        method: "Sigstore keyless (GitHub Actions OIDC identity)"}
+            }' > release-metadata.json
+          cat release-metadata.json
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        if: env.IS_PUBLIC == 'true'
+      - name: Sign SHA256SUMS (keyless, public repo only)
+        if: env.IS_PUBLIC == 'true'
+        working-directory: dist
+        run: cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+      - name: Build provenance for the SBOMs, metadata and checksums (public repo only)
+        if: env.IS_PUBLIC == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/sbom-*.cdx.json
+            dist/release-metadata.json
+            dist/SHA256SUMS
+
+      # A draft has no tag: `--target` records the commit, and GitHub creates the tag on that
+      # commit when a maintainer publishes the draft. The text below comes first; GitHub's
+      # generated notes (categories in .github/release.yml) are appended after it.
+      - name: Create draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          {
+            echo "> Draft created by the Release workflow from \`$SHA\`. Review, edit and publish by hand."
+            echo
+            echo "### Container images"
+            if [ "$PUBLISH" = "true" ]; then
+              tick='`'
+              echo "Multi-platform (linux/amd64, linux/arm64). Pull by digest:"
+              echo
+              for f in dist/image-*.txt; do echo "- ${tick}$(cat "$f")${tick}"; done
+              if [ "$IS_PUBLIC" = "true" ]; then
+                echo
+                echo "Signed with Sigstore (keyless) and carrying build provenance and SBOM attestations."
+              else
+                echo
+                echo "Not signed and not attested: the repository was private when this release was built."
+              fi
+            else
+              echo "Not pushed (dry run). Do not publish this draft: delete it and re-run with publish_images."
+            fi
+            echo
+            echo "### Upgrade notes and breaking changes"
+            echo "_Fill in before publishing._"
+            echo
+            echo "### Security scan status"
+            if [ "$SCAN_MODE" = "blocking" ]; then
+              echo "- Dependency and configuration scan (trivy): **blocking** mode, passed for \`$SHA\`."
+            else
+              echo "- Dependency and configuration scan (trivy): **report-only** mode. Fixable HIGH and CRITICAL"
+              echo "  findings for \`$SHA\` are listed in the Security workflow run for that commit. This release"
+              echo "  is **not** claimed to be free of known vulnerabilities."
+            fi
+            echo "- Secret scan (gitleaks) and CI passed for \`$SHA\` (checked by the Release workflow)."
+            echo
+            echo "### Supply chain"
+            echo "- \`sbom-*.cdx.json\`: CycloneDX software SBOM per app (the software's own dependencies), and"
+            echo "  for the all-in-one image when images were pushed. This is not a cryptographic bill of"
+            echo "  materials (CBOM) of your certificates; CertPing generates that in the product."
+            echo "- \`release-metadata.json\`: version, commit, workflow run, image digests, scan mode and what was signed."
+            echo "- \`SHA256SUMS\`: checksums of the attached files."
+            if [ "$IS_PUBLIC" = "true" ]; then
+              echo "- \`SHA256SUMS.sigstore.json\`: Sigstore signature bundle for \`SHA256SUMS\`."
+              echo "- Build provenance attestations for the SBOMs, metadata and checksums are in the repository's"
+              echo "  Attestations tab."
+            fi
+            echo
+            echo "How to verify the images, provenance, SBOMs and checksums: ${REPO_URL}/blob/${SHA}/.github/RELEASING.md#verifying-a-release"
+          } > notes.md
+          flags=(--draft --target "$SHA" --title "$VERSION" --notes-file notes.md --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" "${flags[@]}" dist/*

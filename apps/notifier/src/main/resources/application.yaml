@@ -1,0 +1,104 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+spring:
+  application:
+    name: certping-notifier
+  # Virtual threads (JDK 21+, pinning fixed in JDK 24+): every request, scheduled job and @Async
+  # task gets its own cheap thread, so thousands of agents long-polling the gateway do not
+  # exhaust a platform thread pool. Set CERTPING_VIRTUAL_THREADS=false to fall back.
+  threads:
+    virtual:
+      enabled: ${CERTPING_VIRTUAL_THREADS:true}
+  # Keep Jackson 2's JSON conventions (dates, nulls, property order) so messages between services
+  # read the same on both sides of the Jackson 3 upgrade.
+  jackson:
+    use-jackson2-defaults: true
+  flyway:
+    enabled: false
+  # Socket timeouts and a whole-send deadline bound SMTP delivery within the claim lease.
+  mail:
+    properties:
+      mail:
+        smtp:
+          connectiontimeout: 30000
+          writetimeout: 30000
+          timeout: 30000
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 20
+
+server:
+  port: 8080
+  shutdown: graceful
+
+app:
+  # The same address the server seeds as its bootstrap super admin; platform alerts go here when
+  # no active super admin resolves. Unset or the seed placeholder means there is no fallback.
+  bootstrap-super-admin:
+    email: ${BOOTSTRAP_SUPER_ADMIN_EMAIL:}
+  # Application thread pool configuration
+  thread-pool:
+    core-size:         5
+    max-size:          10
+    queue-capacity:    25
+    keep-alive-seconds: 60
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+        # Public status reads this group through the server; it answers UP or DOWN and nothing else.
+        status:
+          include: db,notificationConsumer
+          show-details: never
+          show-components: never
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+    mail:
+      enabled: false
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] [%X{organizationId}] %-5level %logger{36} - %msg%n"
+
+notification:
+  # Domains a cc address may be at (comma separated); other cc addresses are dropped. Empty: no cc.
+  cc-allowed-domains: ${NOTIFICATION_CC_ALLOWED_DOMAINS:}
+
+notifier:
+  # Notifications arrive from the server's notifications channel over HTTPS, with the internal token.
+  transport:
+    server-url: ${CERTPING_SERVER_URL:}
+    token: ${CERTPING_INTERNAL_TOKEN:}
+    # Poller threads, each handling one message at a time.
+    concurrency: 4
+    # How long a handled message's lock is renewed at most.
+    max-lock-renewal: PT24H
+  # The server's internal gRPC (host:port), asked whether an organization turned a notification off.
+  # Unset: nothing is asked and every notification is sent.
+  cert-manager:
+    grpc-address: ${CERT_MANAGER_GRPC_ADDR:}
+  delivery:
+    # A deliver-once recipient's claim; it must outlast one send (DeliveryTimeouts).
+    claim-lease: PT5M
+    acs-timeout: PT30S
+    replay-token: ${NOTIFIER_REPLAY_TOKEN:}
+    replay-interval-ms: 3600000
+    max-replays: 3

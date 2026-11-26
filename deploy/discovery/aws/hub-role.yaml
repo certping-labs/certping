@@ -1,0 +1,51 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CertPing discovery, hub. Deploy once in the management account or a delegated
+  administrator account. Lets the agent list the organization's accounts and step into the
+  read-only member role in each one. Optional: skip it if the agent already runs with an
+  identity in this account and you attach the same permissions to that identity.
+
+Parameters:
+  AgentPrincipalArn:
+    Type: String
+    Description: IAM role or user ARN the CertPing agent runs as.
+  MemberRoleName:
+    Type: String
+    Default: CertPingDiscoveryReadOnly
+
+Resources:
+  HubRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CertPingDiscoveryHub
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref AgentPrincipalArn
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CertPingDiscoveryHub
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - organizations:ListAccounts
+                  - acm:ListCertificates
+                  - acm:DescribeCertificate
+                  - acm:GetCertificate
+                  - account:ListRegions
+                Resource: "*"
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Sub "arn:${AWS::Partition}:iam::*:role/${MemberRoleName}"
+
+Outputs:
+  HubRoleArn:
+    Value: !GetAtt HubRole.Arn

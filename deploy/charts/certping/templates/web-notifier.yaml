@@ -1,0 +1,187 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- $fullname := include "certping.fullname" . -}}
+{{- $extraCa := include "certping.extraCa.enabled" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "certping.labels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: {{ include "certping.image" (dict "root" . "name" "web") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- with .Values.web.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: CERTPING_URL
+              value: {{ include "certping.url" . | quote }}
+            {{- with .Values.web.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.web.resources | nindent 12 }}
+          volumeMounts:
+            # The root filesystem is read only; Next.js writes its image cache and temp files here.
+            - name: tmp
+              mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/.next/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: next-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    {{- include "certping.selector" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-notifier
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+    app.kubernetes.io/component: notifier
+spec:
+  replicas: {{ .Values.notifier.replicas }}
+  selector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "notifier") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "certping.labels" . | nindent 8 }}
+        app.kubernetes.io/component: notifier
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "certping.waitForDatabase" . | nindent 6 }}
+      containers:
+        - name: notifier
+          image: {{ include "certping.image" (dict "root" . "name" "notifier") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if $extraCa }}
+          {{- include "certping.extraCa.command" . | nindent 10 }}
+          {{- end }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- with .Values.notifier.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- include "certping.javaEnv" . | nindent 12 }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.existingSecret }}, key: DB_PASSWORD }
+            - name: CERTPING_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.existingSecret }}, key: CERTPING_INTERNAL_TOKEN }
+            - name: CERTPING_INTERNAL_URL
+              value: {{ printf "http://%s-server:8080" $fullname | quote }}
+            - name: CERT_MANAGER_GRPC_ADDR
+              value: {{ printf "%s-server-grpc:50051" $fullname | quote }}
+            - name: MAIL_HOST
+              value: {{ .Values.notifier.mail.host | quote }}
+            - name: MAIL_PORT
+              value: {{ .Values.notifier.mail.port | quote }}
+            - name: MAIL_USERNAME
+              value: {{ .Values.notifier.mail.username | quote }}
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.existingSecret }}, key: MAIL_PASSWORD, optional: true }
+            - name: EMAIL_FROM
+              value: {{ default (printf "certping@%s" (include "certping.host" .)) .Values.notifier.mail.from | quote }}
+            - name: MAIL_STARTTLS
+              value: {{ ternary "true" "false" (ne (toString .Values.notifier.mail.starttls) "false") | quote }}
+            - name: MAIL_SMTP_AUTH
+              value: {{ ternary "true" "false" (ne (toString .Values.notifier.mail.smtpAuth) "false") | quote }}
+            {{- if $extraCa }}
+            {{- include "certping.extraCa.env" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.notifier.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources: {{- toYaml .Values.notifier.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $extraCa }}
+            {{- include "certping.extraCa.mounts" . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $extraCa }}
+        {{- include "certping.extraCa.volumes" . | nindent 8 }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-notifier
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+    app.kubernetes.io/component: notifier
+spec:
+  selector:
+    {{- include "certping.selector" (dict "root" . "component" "notifier") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

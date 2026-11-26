@@ -1,0 +1,11 @@
+// Copyright Seaionl Inc. and CertPing contributors
+// SPDX-License-Identifier: Apache-2.0
+
+package com.certmanagement.iot.profile;
+
+public enum ProfileKind {
+    CERTIFICATE_ENROLLMENT,
+    TRUST_ANCHOR,
+    PROVISIONING_TEMPLATE,
+    ENROLLMENT_GROUP
+}

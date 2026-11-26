@@ -1,0 +1,194 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- $name := printf "%s-certping-agent" .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- $sa := default $name .Values.serviceAccount.name -}}
+{{- if and .Values.extraCaCerts.configMap .Values.extraCaCerts.secret }}
+{{- fail "extraCaCerts: set configMap or secret, not both" }}
+{{- end }}
+{{- $extraCa := or .Values.extraCaCerts.configMap .Values.extraCaCerts.secret -}}
+{{- if $extraCa }}
+# Runs before the agent to add extraCaCerts to the JVM trust store.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-java-entrypoint
+  labels:
+    app.kubernetes.io/name: certping-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  java-entrypoint.sh: |-
+    {{- .Files.Get "files/java-entrypoint.sh" | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $sa }}
+  labels:
+    app.kubernetes.io/name: certping-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: certping-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: certping-agent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: certping-agent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- range $key, $value := .Values.podLabels }}
+        {{ $key }}: {{ $value | toString | quote }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $sa }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 185
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: {{ printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if $extraCa }}
+          command: ["/bin/sh", "/etc/certping/entrypoint/java-entrypoint.sh"]
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The JVM and Spring Boot write only to /tmp (an emptyDir below).
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- with .Values.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: selfhosted
+            - name: OTEL_JAVAAGENT_ENABLED
+              value: "false"
+            - name: CERTPING_SERVER_URL
+              value: {{ required "Set serverUrl, for example https://certping.example.com" .Values.serverUrl | quote }}
+            - name: CERTPING_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.tokenSecret.name }}
+                  key: {{ .Values.tokenSecret.key }}
+            - name: AGENT_SECRET_STORE_PROVIDER
+              value: {{ .Values.secretStore.provider | quote }}
+            {{- if eq .Values.secretStore.provider "LOCAL" }}
+            {{- fail "LOCAL keeps secrets on the server's volume; a separate agent needs AZURE_KV, AWS_SECRETS_MANAGER or GCP_SECRET_MANAGER" }}
+            {{- end }}
+            - name: CLIENT_KV_URI
+              value: {{ .Values.secretStore.azureKv.vaultUri | quote }}
+            - name: AZURE_KV_AUTH_MODE
+              value: {{ .Values.secretStore.azureKv.authMode | quote }}
+            - name: AWS_REGION
+              value: {{ .Values.secretStore.awsSecretsManager.region | quote }}
+            - name: AWS_SM_AUTH_MODE
+              value: {{ .Values.secretStore.awsSecretsManager.authMode | quote }}
+            - name: GCP_PROJECT_ID
+              value: {{ .Values.secretStore.gcpSecretManager.projectId | quote }}
+            - name: GCP_SM_AUTH_MODE
+              value: {{ .Values.secretStore.gcpSecretManager.authMode | quote }}
+            - name: ACME_DIRECTORY_URL
+              value: {{ .Values.acme.directoryUrl | quote }}
+            - name: ACME_ACCOUNT_EMAIL
+              value: {{ .Values.acme.accountEmail | quote }}
+            {{- if .Values.acme.eab.keyId }}
+            - name: ACME_EAB_KEY_ID
+              value: {{ .Values.acme.eab.keyId | quote }}
+            - name: ACME_EAB_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "Set acme.eab.hmacKeySecret.name to the Secret holding the EAB HMAC key" .Values.acme.eab.hmacKeySecret.name }}
+                  key: {{ .Values.acme.eab.hmacKeySecret.key }}
+            {{- end }}
+            {{- with .Values.httpsProxy }}
+            - name: HTTPS_PROXY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if $extraCa }}
+            - name: CERTPING_EXTRA_CA_CERTS
+              value: {{ printf "/etc/certping/extra-ca/%s" .Values.extraCaCerts.key | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $extraCa }}
+            - name: java-entrypoint
+              mountPath: /etc/certping/entrypoint
+              readOnly: true
+            - name: extra-ca
+              mountPath: /etc/certping/extra-ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $extraCa }}
+        - name: java-entrypoint
+          configMap:
+            name: {{ $name }}-java-entrypoint
+        - name: extra-ca
+          {{- if .Values.extraCaCerts.secret }}
+          secret:
+            secretName: {{ .Values.extraCaCerts.secret }}
+          {{- else }}
+          configMap:
+            name: {{ .Values.extraCaCerts.configMap }}
+          {{- end }}
+        {{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: certping-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: certping-agent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  # No ingress rules: nothing may connect in. Egress is not restricted (see values.yaml).
+  policyTypes: [Ingress]
+{{- end }}

@@ -1,0 +1,81 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Ignore scan results
+scan-results/
+local/cert-manager-logs/
+artifacts/schema-reset-backups/
+# Build artifacts
+target/
+build/
+out/
+*.jar
+*.war
+
+# IDE configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.iml
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Maven
+.m2/
+*.log
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+
+# Gradle
+.gradle/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+local/.env.jwt
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.jks
+*.p12
+*.pfx
+
+# Node modules
+node_modules/
+package-lock.json
+yarn.lock
+
+# OS X
+.AppleDouble
+.LSOverride
+
+# Windows
+$RECYCLE.BIN/
+*.cab
+
+# Temporary files
+*.bak
+*.swp
+*~
+.classpath
+.project
+.pydevproject

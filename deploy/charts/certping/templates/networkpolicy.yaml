@@ -1,0 +1,116 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.networkPolicy.enabled }}
+{{- $fullname := include "certping.fullname" . -}}
+{{- $server := include "certping.peer" (dict "root" . "component" "server") -}}
+{{- $notifier := include "certping.peer" (dict "root" . "component" "notifier") -}}
+{{- $web := include "certping.peer" (dict "root" . "component" "web") -}}
+{{- /*
+Ingress rules only; egress stays open because the server and agents reach CAs, DNS providers,
+cloud APIs, SMTP and webhooks. See networkPolicy in values.yaml.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-server
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "server") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # Internal gRPC (internal token in call metadata, bound to the pod IP): the notifier only.
+    - from:
+        {{- $notifier | nindent 8 }}
+      ports:
+        - { port: grpc, protocol: TCP }
+    # HTTP API and agent gateway.
+    - ports:
+        - { port: http, protocol: TCP }
+      {{- with .Values.networkPolicy.ingressFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+        {{- $web | nindent 8 }}
+        {{- $notifier | nindent 8 }}
+      {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "web") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { port: http, protocol: TCP }
+      {{- with .Values.networkPolicy.ingressFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-notifier
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "notifier") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # The notifier's HTTP API (internal token on every endpoint but health): the server only.
+    # Web, the agents and the ingress controller cannot reach it.
+    - from:
+        {{- $server | nindent 8 }}
+      ports:
+        - { port: http, protocol: TCP }
+{{- if .Values.postgres.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-postgres
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "postgres") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- $server | nindent 8 }}
+        {{- $notifier | nindent 8 }}
+      ports:
+        - { port: postgres, protocol: TCP }
+{{- end }}
+{{- if .Values.redis.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-redis
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "redis") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- $server | nindent 8 }}
+      ports:
+        - { port: redis, protocol: TCP }
+{{- end }}
+{{- end }}

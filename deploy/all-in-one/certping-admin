@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# CertPing admin helper for the all-in-one container.
+#
+#   certping-admin                         prints the first administrator's sign-in details
+#   certping-admin reset-password <user>   prints a one-hour password reset link for a user
+#                                          (username or email), for installs without email
+set -euo pipefail
+config=/var/lib/certping/config.env
+[[ -r "$config" ]] || { echo "No $config yet: the container has not started once." >&2; exit 1; }
+# shellcheck disable=SC1090
+. "$config"
+
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+reset_password() {
+  local who="$1"
+  if [[ ! "$who" =~ ^[A-Za-z0-9._@+-]+$ ]]; then
+    echo "Give a username or email address." >&2; exit 2
+  fi
+  local row email hash pwd
+  row="$(gosu postgres psql -d certping -tA -F '|' -c \
+    "SELECT email, coalesce(password_hash, '') FROM users WHERE is_deleted = false AND (lower(username) = lower('$who') OR lower(email) = lower('$who')) LIMIT 1")"
+  if [[ -z "$row" ]]; then
+    echo "No user '$who'." >&2; exit 1
+  fi
+  email="${row%%|*}"; hash="${row#*|}"
+  # Binds the link to the current password, so it stops working once it has been used.
+  pwd="$(printf '%s' "$hash" | openssl dgst -sha256 -binary | b64url | cut -c1-22)"
+  local now exp jti header payload sig
+  now="$(date +%s)"; exp=$((now + 3600))
+  jti="$(cat /proc/sys/kernel/random/uuid)"
+  header="$(printf '{"alg":"HS256"}' | b64url)"
+  payload="$(printf '{"sub":"%s","iat":%d,"exp":%d,"jti":"%s","email":"%s","type":"password_reset","pwd":"%s"}' \
+    "$email" "$now" "$exp" "$jti" "$email" "$pwd" | b64url)"
+  sig="$(printf '%s.%s' "$header" "$payload" \
+    | openssl dgst -sha256 -mac HMAC -macopt "key:${PASSWORD_RESET_TOKEN_SECRET}" -binary | b64url)"
+  echo "Password reset link for $email (valid for one hour):"
+  echo "${CERTPING_URL}/reset-password?token=${header}.${payload}.${sig}"
+}
+
+case "${1:-}" in
+  reset-password)
+    [[ -n "${2:-}" ]] || { echo "Usage: certping-admin reset-password <username or email>" >&2; exit 2; }
+    reset_password "$2"
+    ;;
+  "")
+    echo "URL:      ${CERTPING_URL}"
+    echo "Username: ${BOOTSTRAP_SUPER_ADMIN_USERNAME:-<created through the setup screen>}"
+    echo "Password: ${BOOTSTRAP_SUPER_ADMIN_PASSWORD:-<set at the setup screen>} (initial; changed at first sign-in)"
+    echo "Forgot a password? certping-admin reset-password <username or email>"
+    ;;
+  *)
+    echo "Usage: certping-admin [reset-password <username or email>]" >&2; exit 2
+    ;;
+esac

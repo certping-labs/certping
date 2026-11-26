@@ -1,0 +1,16 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+node_modules/
+.next/
+target/
+build/
+dist/
+.env
+.env.*
+!.env.example
+!.env.e2e.example
+*.log
+.DS_Store
+.idea/
+.vscode/

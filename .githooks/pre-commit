@@ -1,0 +1,21 @@
+#!/bin/sh
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Monorepo pre-commit hook. Git runs one hooks directory for the whole repository, so this hook
+# runs each app's own hook (apps/<app>/.githooks/pre-commit) from that app's directory, and only
+# when the commit stages files under that app. Installed by make hooks.
+set -eu
+
+top="$(git rev-parse --show-toplevel)"
+cd "$top"
+
+for hook in apps/*/.githooks/pre-commit; do
+  [ -f "$hook" ] || continue
+  app_dir="${hook%/.githooks/pre-commit}"
+  if git diff --cached --quiet -- "$app_dir"; then
+    continue
+  fi
+  echo "pre-commit: $app_dir"
+  (cd "$app_dir" && sh ./.githooks/pre-commit "$@")
+done

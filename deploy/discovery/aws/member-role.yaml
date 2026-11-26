@@ -1,0 +1,58 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CertPing discovery, member account. Read-only role that lets the CertPing agent list ACM
+  certificates and enabled regions. Deploy to every account with a service-managed StackSet.
+
+Parameters:
+  HubAccountId:
+    Type: String
+    AllowedPattern: "\\d{12}"
+    Description: Account where the CertPing agent runs (or the hub role lives).
+  RoleName:
+    Type: String
+    Default: CertPingDiscoveryReadOnly
+  ExternalId:
+    Type: String
+    Default: ""
+    Description: Optional. If set, CertPing must send this external ID.
+
+Conditions:
+  UseExternalId: !Not [!Equals [!Ref ExternalId, ""]]
+
+Resources:
+  DiscoveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${HubAccountId}:root"
+            Action: sts:AssumeRole
+            Condition: !If
+              - UseExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+      Policies:
+        - PolicyName: CertPingDiscoveryReadOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - acm:ListCertificates
+                  - acm:DescribeCertificate
+                  - acm:GetCertificate
+                  - account:ListRegions
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt DiscoveryRole.Arn

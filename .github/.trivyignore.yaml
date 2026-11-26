@@ -1,0 +1,35 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Temporarily accepted trivy findings (the documented exception mechanism, see
+# the stable-release checklist in .github/RELEASING.md). Rules:
+#   - Every entry needs `id`, `expired_at` (at most 90 days out), `statement`
+#     (why it does not affect CertPing or why the fix must wait) and the
+#     accepting maintainer's GitHub handle in the statement.
+#   - Narrow entries with `paths` to the manifest they apply to.
+#   - Trivy reports the finding again once `expired_at` has passed, so an
+#     exception cannot be forgotten; renew it deliberately or fix it.
+#   - An entry is a review item on the PR that adds it (code owners of
+#     .github/ are requested automatically).
+# Format: https://trivy.dev/latest/docs/configuration/filtering/#by-finding-ids
+#
+# Example (not active):
+#   vulnerabilities:
+#     - id: CVE-2026-00000
+#       paths:
+#         - "apps/server/pom.xml"
+#       expired_at: 2026-12-31
+#       statement: "@chenna-certping: only reachable through the XML parser, which CertPing does not enable. Fixed upstream in x.y.z, upgrade tracked in #123."
+vulnerabilities: []
+misconfigurations:
+  - id: DS-0002
+    paths:
+      - "deploy/all-in-one/Dockerfile"
+    expired_at: 2027-01-29
+    statement: "@chenna-certping: supervisord starts as root only to run each program under its own user (supervisord.conf user=); no CertPing process runs as root."
+  - id: AZU-0047
+    paths:
+      - "deploy/azure/single-vm/main.tf"
+    expired_at: 2027-01-29
+    statement: "@chenna-certping: only 80/443 are open to any source, as a public web server needs; SSH is restricted to operator CIDRs."
+secrets: []

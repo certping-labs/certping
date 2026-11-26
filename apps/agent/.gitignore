@@ -1,0 +1,23 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.iml
+.idea/
+.vscode/
+*.DS_Store
+.env
+*.env
+!.env.example
+
+.m2
+
+# Local EJBCA credentials and CA material. Keep the reproducible stack files tracked.
+local/ejbca/generated/
+
+# Captured Intune challenges, CSRs, and device metadata are local security artifacts.
+local/scep-test-session/

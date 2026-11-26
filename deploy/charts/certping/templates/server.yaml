@@ -1,0 +1,260 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- $fullname := include "certping.fullname" . -}}
+{{- $extraCa := include "certping.extraCa.enabled" . -}}
+{{- if and .Values.bundledAgent.enabled (gt (int .Values.server.replicas) 1) }}
+{{- fail "bundledAgent shares a ReadWriteOnce volume with the server: keep server.replicas at 1, or disable bundledAgent and run agents with the certping-agent chart" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-server
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  {{- if .Values.bundledAgent.enabled }}
+  strategy:
+    # The secrets volume is ReadWriteOnce: the old pod lets go before the new one starts.
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "certping.selector" (dict "root" . "component" "server") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "certping.labels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: {{ and .Values.bundledAgent.enabled .Values.bundledAgent.automountServiceAccountToken }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "certping.waitForDatabase" . | nindent 6 }}
+      containers:
+        - name: server
+          image: {{ include "certping.image" (dict "root" . "name" "server") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if $extraCa }}
+          {{- include "certping.extraCa.command" . | nindent 10 }}
+          {{- end }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+            {{- with .Values.server.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            {{- include "certping.javaEnv" . | nindent 12 }}
+            # The release this server runs: the agent image tag shown in the "Add agent" command.
+            - name: CERTPING_VERSION
+              value: {{ default .Chart.AppVersion .Values.image.tag | quote }}
+            # Whether this installation sends email: the sign-in page and the public status page
+            # read it (the notifier gets the full SMTP settings).
+            - name: MAIL_HOST
+              value: {{ .Values.notifier.mail.host | quote }}
+            - name: DB_POOL_SIZE
+              value: {{ .Values.server.dbPoolSize | default 40 | quote }}
+            - name: REDIS_HOST
+              value: {{ include "certping.redisHost" . | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: NOTIFICATION_SERVICE_BASE_URL
+              value: {{ printf "http://%s-notifier:8080" $fullname | quote }}
+            # The internal gRPC port opens on the pod IP only (not loopback, not every interface);
+            # calls need CERTPING_INTERNAL_TOKEN and the NetworkPolicy admits only the notifier.
+            - name: INTERNAL_GRPC_BIND_ADDRESS
+              valueFrom:
+                fieldRef: { fieldPath: status.podIP }
+            - name: STATUS_AGENT_BASE_URL
+              value: {{ if .Values.bundledAgent.enabled }}"http://localhost:8081"{{ else }}"http://127.0.0.1:9"{{ end }}
+            - name: CERTPING_BOOTSTRAP_AGENT_ORG
+              value: {{ .Values.bootstrapAgentOrganization | quote }}
+            {{- if not .Values.bundledAgent.enabled }}
+            - name: CERTPING_BOOTSTRAP_AGENT_TOKEN
+              value: ""
+            {{- end }}
+            - name: CERTPING_LOCAL_SECRET_DIR
+              value: /var/lib/certping/secrets
+            {{- with .Values.sso.oidc }}
+            {{- if .issuerUri }}
+            - name: CERTPING_OIDC_ISSUER_URI
+              value: {{ .issuerUri | quote }}
+            - name: CERTPING_OIDC_CLIENT_ID
+              value: {{ .clientId | quote }}
+            - name: CERTPING_OIDC_ORGANIZATION
+              value: {{ .organization | quote }}
+            - name: CERTPING_OIDC_DISPLAY_NAME
+              value: {{ .displayName | quote }}
+            - name: CERTPING_OIDC_DEFAULT_ROLE
+              value: {{ .defaultRole | quote }}
+            - name: CERTPING_OIDC_AUTO_PROVISION
+              value: {{ .autoProvision | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $extraCa }}
+            {{- include "certping.extraCa.env" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 50051
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 20
+          resources: {{- toYaml .Values.server.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.bundledAgent.enabled }}
+            - name: agent-secrets
+              mountPath: /var/lib/certping/secrets
+            {{- end }}
+            {{- if $extraCa }}
+            {{- include "certping.extraCa.mounts" . | nindent 12 }}
+            {{- end }}
+        {{- if .Values.bundledAgent.enabled }}
+        - name: agent
+          image: {{ include "certping.image" (dict "root" . "name" "agent") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if $extraCa }}
+          {{- include "certping.extraCa.command" . | nindent 10 }}
+          {{- end }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- with .Values.bundledAgent.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: selfhosted
+            - name: OTEL_JAVAAGENT_ENABLED
+              value: "false"
+            - name: SERVER_PORT
+              value: "8081"
+            - name: CERTPING_SERVER_URL
+              value: http://localhost:8080
+            - name: CERTPING_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.existingSecret }}, key: CERTPING_BOOTSTRAP_AGENT_TOKEN }
+            - name: CERTPING_AGENT_BUNDLED
+              value: "true"
+            - name: AGENT_SECRET_STORE_PROVIDER
+              value: LOCAL
+            - name: CERTPING_LOCAL_SECRET_DIR
+              value: /var/lib/certping/secrets
+            - name: CERTPING_LOCAL_SECRET_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.existingSecret }}, key: CERTPING_LOCAL_SECRET_KEY }
+            - name: ACME_DIRECTORY_URL
+              value: {{ .Values.bundledAgent.acme.directoryUrl | quote }}
+            - name: ACME_ACCOUNT_EMAIL
+              value: {{ .Values.bundledAgent.acme.accountEmail | quote }}
+            {{- with .Values.bundledAgent.acme.eab.keyId }}
+            - name: ACME_EAB_KEY_ID
+              value: {{ . | quote }}
+            - name: ACME_EAB_HMAC_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ $.Values.existingSecret }}, key: ACME_EAB_HMAC_KEY }
+            {{- end }}
+            {{- if $extraCa }}
+            {{- include "certping.extraCa.env" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.bundledAgent.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: agent-http
+              containerPort: 8081
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: agent-http }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources: {{- toYaml .Values.bundledAgent.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: agent-secrets
+              mountPath: /var/lib/certping/secrets
+            {{- if $extraCa }}
+            {{- include "certping.extraCa.mounts" . | nindent 12 }}
+            {{- end }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.bundledAgent.enabled }}
+        - name: agent-secrets
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-agent-secrets
+        {{- end }}
+        {{- if $extraCa }}
+        {{- include "certping.extraCa.volumes" . | nindent 8 }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-server
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  selector:
+    {{- include "certping.selector" (dict "root" . "component" "server") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Internal gRPC for the notifier. It has no caller authentication, so it is kept off the Service
+# the Ingress uses, and the server NetworkPolicy (networkPolicy.enabled) admits only the notifier.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-server-grpc
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  selector:
+    {{- include "certping.selector" (dict "root" . "component" "server") | nindent 4 }}
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+{{- if .Values.bundledAgent.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-agent-secrets
+  labels:
+    {{- include "certping.labels" . | nindent 4 }}
+  annotations:
+    # Holds encrypted private keys: keep it when the release is uninstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.bundledAgent.secretsVolume.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.bundledAgent.secretsVolume.size }}
+{{- end }}

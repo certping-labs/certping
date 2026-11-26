@@ -1,0 +1,75 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Ignore scan results
+scan-results/
+# Compiled class files
+*.class
+target/
+build/
+out/
+
+# Log files
+*.log
+logs/
+
+# Package files
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# JVM crash logs
+hs_err_pid*
+
+# IDE-specific files
+.idea/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+.vscode/
+.factorypath
+.apt_generated/
+.apt_generated_tests/
+.springBeans
+.sts4-cache/
+
+# Maven
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+.flattened-pom.xml
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# Spring Boot
+spring-boot-devtools/
+
+# Environment variables
+.env
+*.env
+application-local.properties
+application-local.yml
+
+# Kubernetes/Helm
+*.tgz
+charts/*/charts/
+charts/*/requirements.lock
+
+# Cursor-specific files
+.cursor/
+.cursor-data/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+# Python bytecode from the email template generator
+__pycache__/

@@ -1,0 +1,55 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Self-hosted install: reads notifications from the server over HTTPS and
+# sends email through any SMTP server. Shares the server's database, which the server migrates.
+
+spring:
+  datasource:
+    url:      ${DB_URL:jdbc:postgresql://postgres:5432/certping}
+    username: ${DB_USERNAME:certping}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+  jpa:
+    show-sql: false
+  mail:
+    host:     ${MAIL_HOST:}
+    port:     ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable:   ${MAIL_STARTTLS:true}
+            required: ${MAIL_STARTTLS:true}
+        transport:
+          protocol: smtp
+
+notifier:
+  transport:
+    server-url: ${CERTPING_INTERNAL_URL:http://server:8080}
+    token: ${CERTPING_INTERNAL_TOKEN}
+  cert-manager:
+    grpc-address: ${CERT_MANAGER_GRPC_ADDR:server:50051}
+
+azure:
+  communication:
+    enabled: false
+
+email:
+  provider:          smtp
+  sender-address:    ${EMAIL_FROM:}
+  support-address:   ${EMAIL_SUPPORT_ADDRESS:${EMAIL_FROM:}}
+  frontend-base-url: ${CERTPING_URL}
+
+logging:
+  level:
+    root: WARN
+    com.certping: INFO
+
+# A self-hosted install is production: no environment tag on email subjects. Set
+# CERTPING_ENVIRONMENT=staging (for example) to mark mail from a test install.
+ENVIRONMENT: ${CERTPING_ENVIRONMENT:prod}

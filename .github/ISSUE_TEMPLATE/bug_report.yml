@@ -1,0 +1,56 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Bug report
+description: Something in CertPing does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security problem?** Do not open a public issue. Report it privately: [security advisories](https://github.com/certping-labs/certping/security/advisories/new) or [SECURITY.md](https://github.com/certping-labs/certping/blob/main/SECURITY.md).
+        Never paste private keys, certificates with keys, tokens, passwords or customer data here.
+
+        CertPing is maintained by a small core team before 1.0. Issues are read and triaged as time
+        allows, with no guaranteed response time. Questions are better asked in
+        [Discussions](https://github.com/certping-labs/certping/discussions).
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [web, server, agent, notifier, all-in-one container, Docker Compose kit, Helm charts, Azure VM kit, docs, not sure]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.0.1-beta (image tag) or a commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: CA or ACME provider, deployment target (Kubernetes, AWS, Azure, ...), OS, browser.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Redact hostnames, account IDs and anything secret before pasting.
+      render: text

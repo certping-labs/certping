@@ -1,0 +1,17 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/certping-labs/certping/discussions
+    about: Ask a question or share an idea in GitHub Discussions.
+  - name: Paid support, enterprise plans and managed cloud
+    url: https://www.certping.com/enterprise/
+    about: Paid support, rollout help, enterprise plans and managed deployments from Seaionl Inc.
+  - name: Private support
+    url: mailto:support@certping.com
+    about: Help that cannot be discussed in public. Never send private keys, tokens or credentials.
+  - name: Security vulnerability
+    url: https://github.com/certping-labs/certping/security/advisories/new
+    about: Report privately. Do not open a public issue.

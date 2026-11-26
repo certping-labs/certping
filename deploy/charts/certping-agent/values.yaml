@@ -1,0 +1,155 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# A CertPing agent. Create its token in CertPing: Organization & Access, then the Organization tab,
+# then your organization, then Add agent on its Agents card:
+#
+#   kubectl create secret generic certping-agent-token --from-literal=token=cpa_...
+#   helm install edge . --set serverUrl=https://certping.example.com \
+#     --set secretStore.provider=AZURE_KV --set secretStore.azureKv.vaultUri=https://<vault>.vault.azure.net
+
+# Where the agent reaches CertPing. Outbound HTTPS only; no inbound port is opened.
+serverUrl: ""
+
+# Secret with the agent token under the key "token".
+tokenSecret:
+  name: certping-agent-token
+  key: token
+
+image:
+  repository: ghcr.io/certping-labs/certping-agent
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Keep this at 1. Every replica uses the same token, and the server allows 8 open polls per token
+# (certping.transport.max-concurrent-polls-per-token, env CERTPING_TRANSPORT_MAX_CONCURRENT_POLLS_PER_TOKEN
+# on the server), while each replica opens one poll per job slot (CERTPING_AGENT_MAX_CONCURRENT_JOBS,
+# default 8). Two replicas on one token would need 16 and the extra polls are refused. For more
+# capacity, or for agents in several places, install the chart once per agent, each with its own
+# token (its own tokenSecret). If you do run several replicas on one token, raise the server limit
+# to replicas x jobs, or lower CERTPING_AGENT_MAX_CONCURRENT_JOBS with extraEnv so the total fits.
+replicas: 1
+
+# Where the agent keeps private keys and credentials.
+secretStore:
+  # AZURE_KV, AWS_SECRETS_MANAGER or GCP_SECRET_MANAGER.
+  provider: AZURE_KV
+  azureKv:
+    vaultUri: ""
+    # WORKLOAD_IDENTITY on AKS (see Azure below); DEFAULT tries the usual Azure credential chain.
+    authMode: WORKLOAD_IDENTITY
+  awsSecretsManager:
+    region: ""
+    # DEFAULT uses the AWS default credential chain, which picks up EKS IRSA, EKS Pod Identity,
+    # environment keys and EC2 instance profiles on its own (see AWS below). INSTANCE_PROFILE,
+    # PROFILE and STATIC also exist. WEB_IDENTITY_TOKEN also needs the role ARN and token file,
+    # which this chart does not set (extraEnv: AGENT_SECRETSTORE_AWSSECRETSMANAGER_ROLEARN and
+    # AGENT_SECRETSTORE_AWSSECRETSMANAGER_WEBIDENTITYTOKENFILE); DEFAULT needs neither.
+    authMode: DEFAULT
+  gcpSecretManager:
+    projectId: ""
+    # ADC (Application Default Credentials): on GKE with Workload Identity (see GCP below).
+    authMode: ADC
+
+# Workload identity: the agent signs in to the cloud secret store without stored keys.
+#
+#   AWS (EKS IRSA): create an IAM role whose trust policy allows this service account, then
+#     serviceAccount.annotations:
+#       eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/certping-agent
+#     EKS injects the role and token file and authMode DEFAULT picks them up. With EKS Pod
+#     Identity, create the pod identity association for this service account instead; no
+#     annotation is needed.
+#   Azure (AKS workload identity): a federated credential on a managed identity for this
+#     service account, then
+#       serviceAccount.annotations:
+#         azure.workload.identity/client-id: <managed identity client id>
+#       podLabels:
+#         azure.workload.identity/use: "true"
+#     The label makes AKS inject the client id, tenant and token file the WORKLOAD_IDENTITY mode
+#     reads.
+#   GCP (GKE Workload Identity): bind roles/iam.workloadIdentityUser on the Google service
+#     account to this Kubernetes service account, then
+#       serviceAccount.annotations:
+#         iam.gke.io/gcp-service-account: certping-agent@<project>.iam.gserviceaccount.com
+#     authMode ADC then gets that identity from the GKE metadata server.
+
+# Corporate egress proxy, if any, as http://host:port (port 3128 when left out). The chart sets
+# only HTTPS_PROXY; it sets no NO_PROXY. What is proxied today:
+#   - The connection to serverUrl: always through httpsProxy, with no exceptions. The agent's own
+#     code reads HTTPS_PROXY (or https_proxy) only for this connection and never reads NO_PROXY.
+#   - Everything else (ACME CAs, DNS provider APIs, other CAs, the Kubernetes API): the agent's own
+#     code does not apply httpsProxy. The Azure, AWS and Google SDKs have their own proxy handling
+#     and may pick up HTTPS_PROXY and NO_PROXY from the environment on their own; that is not
+#     something CertPing configures or tests.
+# To send the other traffic through the proxy, give the JVM its standard proxy properties with
+# extraEnv, for example:
+#   extraEnv:
+#     - name: JAVA_TOOL_OPTIONS
+#       value: >-
+#         -Dhttps.proxyHost=proxy.corp -Dhttps.proxyPort=3128
+#         -Dhttp.nonProxyHosts=localhost|*.svc|*.cluster.local|10.*
+# Clients that follow the JVM's default proxy settings then use the proxy, except for the hosts in
+# http.nonProxyHosts. When httpsProxy is empty, the connection to serverUrl follows them as well.
+httpsProxy: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  # Workload identity annotations go here (see above).
+  annotations: {}
+  # Mounts the service account token. The agent needs it today: it discovers certificates in
+  # this cluster (Secrets, Ingresses, Gateways) and deploys renewed ones into Kubernetes Secrets
+  # through the in-cluster API with this token. Set false when the agent only works with
+  # resources outside the cluster. Workload identity (Azure, EKS IRSA, GKE) does not depend on it.
+  automountServiceAccountToken: true
+
+# A NetworkPolicy that admits no inbound connections: the agent only connects out (to CertPing,
+# CAs, clouds and the Kubernetes API), and kubelet probes are not affected. Egress is open.
+networkPolicy:
+  enabled: true
+
+# Extra labels on the agent pod, for example azure.workload.identity/use: "true" (see above).
+podLabels: {}
+
+# The ACME CA the agent orders certificates from.
+acme:
+  # ACME_DIRECTORY_URL. Let's Encrypt production by default; use
+  # https://acme-staging-v02.api.letsencrypt.org/directory while testing, or any other ACME CA.
+  directoryUrl: https://acme-v02.api.letsencrypt.org/directory
+  # ACME_ACCOUNT_EMAIL: contact on the ACME account; the CA sends expiry and policy notices here.
+  accountEmail: ""
+  # External account binding, for a CA that requires it (ZeroSSL, Google Trust Services, SSL.com):
+  # the key id the CA issues (ACME_EAB_KEY_ID), and a Secret you create holding its HMAC key
+  # (ACME_EAB_HMAC_KEY) under hmacKeySecret.key. Leave keyId empty for Let's Encrypt.
+  eab:
+    keyId: ""
+    hmacKeySecret:
+      name: ""
+      key: hmacKey
+
+# Extra CA certificates the agent trusts (a private ACME CA such as step-ca, a TLS-inspecting
+# proxy, a CertPing server behind a private CA). Name a ConfigMap or a Secret (not both) holding a
+# PEM file with one or more certificates under key:
+#   kubectl create configmap certping-extra-ca --from-file=ca.crt=corp-ca.pem
+#   --set extraCaCerts.configMap=certping-extra-ca
+# The agent then starts through files/java-entrypoint.sh, which copies the JVM trust store to
+# /tmp, adds the certificates and points JAVA_TOOL_OPTIONS at the copy (CERTPING_EXTRA_CA_CERTS).
+extraCaCerts:
+  configMap: ""
+  secret: ""
+  key: ca.crt
+
+resources:
+  requests: { cpu: 100m, memory: 384Mi }
+  limits: { memory: 768Mi }
+
+# Extra environment, added after the chart's own entries (a later entry with the same name wins).
+# extraEnv takes env entries, extraEnvFrom takes envFrom sources, for example:
+#   extraEnv:
+#     - name: CERTPING_AGENT_MAX_CONCURRENT_JOBS
+#       value: "4"
+#   extraEnvFrom:
+#     - secretRef: { name: certping-agent-extra }
+extraEnv: []
+extraEnvFrom: []

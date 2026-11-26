@@ -1,0 +1,455 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+spring:
+  jackson:
+    use-jackson2-defaults: true
+  # Virtual threads (JDK 21+, pinning fixed in JDK 24+): every request, scheduled job and @Async
+  # task gets its own cheap thread, so thousands of agents long-polling the gateway do not
+  # exhaust a platform thread pool. Set CERTPING_VIRTUAL_THREADS=false to fall back.
+  threads:
+    virtual:
+      enabled: ${CERTPING_VIRTUAL_THREADS:true}
+  application:
+    name: certping-cert-manager
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    database: postgresql
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        # JSON columns use Jackson 3, the same library as the rest of the server. With the
+        # default (Jackson 2) mapper a Jackson 3 JsonNode column could not be read or written.
+        type:
+          json_format_mapper: org.hibernate.type.format.jackson.Jackson3JsonFormatMapper
+    hibernate:
+      ddl-auto: validate
+
+  sql:
+    init:
+      mode: never
+
+  servlet:
+    # Upload limits for multipart requests.
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+  # Streamed downloads (the audit trail exports, StreamingResponseBody) run as async requests. The container's
+  # default async timeout (30 s) would cut a 10,000-row export off on a slow link; the exports' own query
+  # timeout (certping.audit.export-timeout-ms) bounds the database side.
+  mvc:
+    async:
+      request-timeout: ${SPRING_MVC_ASYNC_REQUEST_TIMEOUT:120s}
+
+  # Shared SSO session defaults across environments.
+  session:
+    store-type: jdbc
+    timeout: 10m
+    jdbc:
+      initialize-schema: never
+      table-name: SPRING_SESSION
+
+  # Redis holds the revoked access tokens (AccessTokenBlacklistService) and the feature flag
+  # change counter every pod polls (SharedFeatureFlags). Not a hard dependency: an
+  # unreachable Redis fails open and is counted.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      timeout: ${REDIS_TIMEOUT:2s}
+
+  web:
+    error:
+      include-message: never
+
+      include-stacktrace: never
+
+server:
+  port: 8080
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: None
+
+certping:
+  # The CertPing release this server runs, for example 0.0.1-beta. The release image sets it through
+  # CERTPING_VERSION; "Add agent" uses it as the agent image tag (0.0.1-beta when it is not set).
+  version: ${CERTPING_VERSION:}
+  # One OpenID Connect provider for the installation (self-hosted single sign-on). Sign-in stays
+  # local only until issuer-uri, client-id, client-secret and organization are all set; then the
+  # login page shows a button and members are provisioned into that organization with default-role
+  # (never SUPER_ADMIN) at first sign-in. The redirect URI to register at the provider is
+  # <CERTPING_URL>/login/oauth2/code/sso. docs/self-hosting.md, "Single sign-on".
+  oidc:
+    issuer-uri: ${CERTPING_OIDC_ISSUER_URI:}
+    client-id: ${CERTPING_OIDC_CLIENT_ID:}
+    client-secret: ${CERTPING_OIDC_CLIENT_SECRET:}
+    organization: ${CERTPING_OIDC_ORGANIZATION:}
+    display-name: ${CERTPING_OIDC_DISPLAY_NAME:Single sign-on}
+    scopes: ${CERTPING_OIDC_SCOPES:openid profile email}
+    default-role: ${CERTPING_OIDC_DEFAULT_ROLE:VIEWER}
+    auto-provision: ${CERTPING_OIDC_AUTO_PROVISION:true}
+  # The organization the first Platform Super Admin is put in when none exists (FirstOrganizationService).
+  first-organization:
+    name: ${CERTPING_ORGANIZATION_NAME:My organization}
+    domain: ${CERTPING_ORGANIZATION_DOMAIN:}
+  # Opt-in usage reporting. Off by default; docs/self-hosting.md#privacy-and-telemetry lists every field of the report, and
+  # GET /api/v1/admin/telemetry shows the exact report this installation would send.
+  telemetry:
+    enabled: ${CERTPING_TELEMETRY_ENABLED:false}
+    endpoint: ${CERTPING_TELEMETRY_ENDPOINT:https://telemetry.certping.com/v1/report}
+    interval: ${CERTPING_TELEMETRY_INTERVAL:PT24H}
+    initial-delay: ${CERTPING_TELEMETRY_INITIAL_DELAY:PT60M}
+  # Message transport: the PostgreSQL message_queue table plus the HTTPS agent gateway, no broker
+  # needed. Every gateway call and agent result uses a database connection: the selfhosted server pool
+  # (DB_POOL_SIZE, application-selfhosted.yaml) defaults to 40, as do the Compose, Helm and all-in-one
+  # kits; PostgreSQL's max_connections must cover it plus the notifier's 10.
+  transport:
+    # Channel names. Every queued row stores its channel, so changing one strands the messages
+    # already queued under the old name.
+    inbound-queue-pattern:  '${CERTPING_TRANSPORT_INBOUND_QUEUE_PATTERN:{orgId}-agent-inbound}'
+    outbound-queue:         ${CERTPING_TRANSPORT_OUTBOUND_QUEUE:cert-agent-outbound}
+    # CERT_DISCOVERY commands expire on the queue if no agent picks them up within this window.
+    discovery-command-ttl:  ${CERTPING_TRANSPORT_DISCOVERY_COMMAND_TTL:1h}
+    # Shared secret the notifier uses to read the notifications channel through the gateway.
+    internal-token: ${CERTPING_INTERNAL_TOKEN:}
+    # Single-server installs: token the bundled agent starts with, and the organization slug it
+    # belongs to (empty = the first organization).
+    bootstrap-agent-token: ${CERTPING_BOOTSTRAP_AGENT_TOKEN:}
+    bootstrap-agent-organization: ${CERTPING_BOOTSTRAP_AGENT_ORG:}
+    # Agent gateway limits per agent token (AgentGatewayLimits); each refusal is a 429 with Retry-After in
+    # seconds. Open receive long-polls per token on one server, requests per token per minute (Redis, shared
+    # by every pod), and messages one organization may have waiting on the outbound channel (and on its own
+    # inbound channel). max-requests-per-token-per-minute counts only receive (poll) calls; complete,
+    # abandon, dead-letter, renew-lock, send and whoami count against the much higher
+    # max-settle-requests-per-token-per-minute, so a deployment burst from the bundled agent is not refused.
+    max-concurrent-polls-per-token: ${CERTPING_TRANSPORT_MAX_CONCURRENT_POLLS_PER_TOKEN:8}
+    max-requests-per-token-per-minute: ${CERTPING_TRANSPORT_MAX_REQUESTS_PER_TOKEN_PER_MINUTE:1200}
+    max-settle-requests-per-token-per-minute: ${CERTPING_TRANSPORT_MAX_SETTLE_REQUESTS_PER_TOKEN_PER_MINUTE:6000}
+    # Pause between queue checks of one receive long poll: starts at poll-check-min (an agent polls again
+    # right after a message, so more are likely), doubles while the queue stays empty up to poll-check-max,
+    # and starts short again on the next poll. The total wait of a poll does not change.
+    poll-check-min: ${CERTPING_TRANSPORT_POLL_CHECK_MIN:250ms}
+    poll-check-max: ${CERTPING_TRANSPORT_POLL_CHECK_MAX:2s}
+    max-waiting-messages-per-organization: ${CERTPING_TRANSPORT_MAX_WAITING_MESSAGES_PER_ORGANIZATION:10000}
+    # Largest gateway request body, enforced before it is read (AgentGatewayBodyLimitFilter): 413 over it.
+    max-request-body-bytes: ${CERTPING_TRANSPORT_MAX_REQUEST_BODY_BYTES:8388608}
+  # Per client address limits on sign-in (/api/auth/login, /api/v1/admin/login, /api/auth/login/mfa),
+  # forgot-password, reset-password and the SSO code exchange (AuthRateLimitFilter): max-requests per
+  # window for each endpoint, then 429 with Retry-After. The address is ClientAddressResolver's (client-ip
+  # below), so X-Forwarded-For counts only from a proxy on a private or loopback address.
+  rate-limit:
+    auth:
+      enabled: ${CERTPING_RATE_LIMIT_AUTH_ENABLED:true}
+      max-requests: ${CERTPING_RATE_LIMIT_AUTH_MAX_REQUESTS:20}
+      window: ${CERTPING_RATE_LIMIT_AUTH_WINDOW:PT5M}
+  # Where secrets the agent reads (DNS and deployment credentials) are written. LOCAL: encrypted
+  # files on a volume shared with the bundled agent; the cloud providers are configured per driver.
+  agent-secret-store:
+    provider: ${CERTPING_AGENT_SECRET_STORE_PROVIDER:AZURE_KV}
+    local:
+      directory: ${CERTPING_LOCAL_SECRET_DIR:/var/lib/certping/secrets}
+      key: ${CERTPING_LOCAL_SECRET_KEY:}
+  # Who the client of a request is, for audit rows and auth-failure logs
+  # (ClientAddressResolver). LAST_PROXY_HOP: the rightmost X-Forwarded-For entry when the request came
+  # from a private address, else that address. FRONT_DOOR: X-Azure-ClientIP when X-Azure-FDID is
+  # front-door-id, else LAST_PROXY_HOP. PEER:
+  # getRemoteAddr() as is. In Kubernetes that is NOT the socket peer: Spring Boot's default Tomcat
+  # RemoteIpValve has already rewritten it from X-Forwarded-For. Keep the valve on, because OAuth2/OIDC
+  # redirect URIs need its X-Forwarded-Proto handling. The leftmost X-Forwarded-For entry is
+  # client-written and never read. Behind a load balancer that source-NATs clients (Kubernetes
+  # externalTrafficPolicy: Cluster), every mode records a node IP.
+  client-ip:
+    source: ${CERTPING_CLIENT_IP_SOURCE:LAST_PROXY_HOP}
+    front-door-id: ${CERTPING_CLIENT_IP_FRONT_DOOR_ID:}
+  # NotificationPolicyService for the notifier, pod to pod. The Service exposes this port and no
+  # ingress does; see docs/architecture.md. Every call needs the internal token
+  # (certping.transport.internal-token) as "authorization: Bearer" metadata. bind-address: loopback
+  # by default (one machine); the Helm chart sets the pod IP, Compose the server's name on the
+  # notifier network.
+  internal-grpc:
+    enabled: ${INTERNAL_GRPC_ENABLED:true}
+    port:    ${INTERNAL_GRPC_PORT:50051}
+    bind-address: ${INTERNAL_GRPC_BIND_ADDRESS:127.0.0.1}
+  iot:
+    health-stale-after: ${CERTPING_IOT_HEALTH_STALE_AFTER:15m}
+    max-agent-clock-skew: ${CERTPING_IOT_MAX_AGENT_CLOCK_SKEW:10m}
+    pending-sync-retry-after: ${CERTPING_IOT_PENDING_SYNC_RETRY_AFTER:1m}
+    running-sync-timeout: ${CERTPING_IOT_RUNNING_SYNC_TIMEOUT:2h}
+    profile-response-timeout: ${CERTPING_IOT_PROFILE_RESPONSE_TIMEOUT:2h}
+    sync-interval: ${CERTPING_IOT_SYNC_INTERVAL:1h}
+    device-sync:
+      max-explicit-devices: ${CERTPING_IOT_DEVICE_SYNC_MAX_EXPLICIT_DEVICES:500}
+      max-all-devices: ${CERTPING_IOT_DEVICE_SYNC_MAX_ALL_DEVICES:5000}
+      cooldown: ${CERTPING_IOT_DEVICE_SYNC_COOLDOWN:15m}
+  # In-process scheduler.
+  # Cron expressions and enable flags are env-var overridable so they can be tuned
+  # per installation without rebuilding the app.
+  # All times are UTC. Multi-replica safe via worker-queue pattern (see RenewalTriggerService).
+
+  jobs:
+    # Per-run budget for every DrainRunner drain (SchedulerExecutionPolicy.budgetFor). A job may
+    # override either value with certping.jobs.<job>.max-rows-per-run / .max-run-duration. A capped
+    # run marks cron_runs.continuation_due_at and the scheduler supervisor continues it on its next
+    # five-minute tick (any pod, also after a restart) until the backlog is drained, so re-enabling a
+    # feature never drains an unbounded backlog in one go yet nothing waits for the next natural fire.
+    # Batch drains (IoT revocations) count one batch as one row.
+    drain-budget:
+      max-rows-per-run: ${CERTPING_JOBS_DRAIN_BUDGET_MAX_ROWS_PER_RUN:10000}
+      max-run-duration: ${CERTPING_JOBS_DRAIN_BUDGET_MAX_RUN_DURATION:30m}
+    mark-expired-certs:
+      cron:    "${CERTPING_JOBS_MARK_EXPIRED_CERTS_CRON:0 0 2 * * *}"       # 2 AM — runs BEFORE renewals
+      enabled: ${CERTPING_JOBS_MARK_EXPIRED_CERTS_ENABLED:true}
+    trigger-renewals:
+      cron:    "${CERTPING_JOBS_TRIGGER_RENEWALS_CRON:0 0 3 * * *}"         # 3 AM daily
+      enabled: ${CERTPING_JOBS_TRIGGER_RENEWALS_ENABLED:true}
+    trigger-expiry-alerts:
+      cron:    "${CERTPING_JOBS_TRIGGER_EXPIRY_ALERTS_CRON:0 0 8 * * *}"    # 8 AM daily
+      enabled: ${CERTPING_JOBS_TRIGGER_EXPIRY_ALERTS_ENABLED:true}
+      days-before-expiry: ${CERTPING_JOBS_TRIGGER_EXPIRY_ALERTS_DAYS_BEFORE_EXPIRY:30}
+      # One alert when a certificate crosses each of these, not one a day. The widest also bounds
+      # the look-ahead together with days-before-expiry.
+      thresholds-days: ${CERTPING_JOBS_TRIGGER_EXPIRY_ALERTS_THRESHOLDS_DAYS:30,14,7,3,1}
+    trigger-iot-identity-sync:
+      # Drain retries every minute; repository eligibility still limits normal FULL syncs to hourly.
+      cron:    "${CERTPING_JOBS_TRIGGER_IOT_IDENTITY_SYNC_CRON:0 * * * * *}"
+      enabled: ${CERTPING_JOBS_TRIGGER_IOT_IDENTITY_SYNC_ENABLED:true}
+    trigger-iot-activity-digest:
+      # One IoT activity summary per organization per day; 7 AM UTC daily.
+      # Keep lookback-hours aligned with the cron interval so windows neither gap nor overlap.
+      cron:          "${CERTPING_JOBS_TRIGGER_IOT_ACTIVITY_DIGEST_CRON:0 0 7 * * *}"
+      enabled:       ${CERTPING_JOBS_TRIGGER_IOT_ACTIVITY_DIGEST_ENABLED:true}
+      lookback-hours: ${CERTPING_JOBS_TRIGGER_IOT_ACTIVITY_DIGEST_LOOKBACK_HOURS:24}
+    trigger-iot-fleet-health-check:
+      # Hourly at :20 so a new problem surfaces within the hour; every alert dedupes on the day, so
+      # a condition that persists is one alert per day rather than one per run.
+      cron:    "${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_CRON:0 20 * * * *}"
+      enabled: ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_ENABLED:true}
+      # Window for the rate-based checks (enrollment failures, throttling, ambiguous enrollments).
+      lookback-hours:              ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_LOOKBACK_HOURS:24}
+      # Both must be met before an enrollment spike alerts, so a tiny fleet's two failures stay quiet.
+      enrollment-failure-minimum:  ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_ENROLLMENT_FAILURE_MINIMUM:10}
+      enrollment-failure-percent:  ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_ENROLLMENT_FAILURE_PERCENT:25}
+      throttled-check-in-minimum:  ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_THROTTLED_CHECK_IN_MINIMUM:20}
+      # Comfortably longer than any device's own check-in interval, so a slow device is not a finding.
+      nudge-stale-hours:           ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_NUDGE_STALE_HOURS:48}
+      # Device sync legitimately lags issuance, so only older unlinked certificates count.
+      unlinked-age-hours:          ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_UNLINKED_AGE_HOURS:24}
+      unlinked-minimum:            ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_UNLINKED_MINIMUM:5}
+      revocation-stale-hours:      ${CERTPING_JOBS_TRIGGER_IOT_FLEET_HEALTH_CHECK_REVOCATION_STALE_HOURS:6}
+    soft-delete-purge:
+      cron:    "${CERTPING_JOBS_SOFT_DELETE_PURGE_CRON:0 0 3 * * *}"       # 3 AM — between mark-expired (2 AM) and expiry-cleanup (4 AM)
+      enabled: ${CERTPING_JOBS_SOFT_DELETE_PURGE_ENABLED:true}
+    expiry-cleanup:
+      cron:    "${CERTPING_JOBS_EXPIRY_CLEANUP_CRON:0 0 4 * * *}"          # 4 AM — soft-deletes EXPIRED/REVOKED certs older than 24h
+      enabled: ${CERTPING_JOBS_EXPIRY_CLEANUP_ENABLED:true}
+    queue-alert:
+      cron:    "${CERTPING_JOBS_QUEUE_ALERT_CRON:0 */5 * * * *}"            # every 5 min — read message queue active + dead-letter counts
+      enabled: ${CERTPING_JOBS_QUEUE_ALERT_ENABLED:true}
+    feature-lifecycle-reconcile:
+      # Baseline and backstop sweep of the feature lifecycle: pauses (silently, audited) the records of
+      # organizations whose feature is off and resumes platform-paused ones whose feature is back on.
+      # Also held by the FEATURE_LIFECYCLE_RECONCILE ops flag (seeded off): review
+      # GET /api/v1/admin/feature-lifecycle/baseline-preview first. Bounded per run; a capped sweep
+      # continues on the next run.
+      fixed-delay:      ${CERTPING_JOBS_FEATURE_LIFECYCLE_RECONCILE_FIXED_DELAY:PT5M}
+      enabled:          ${CERTPING_JOBS_FEATURE_LIFECYCLE_RECONCILE_ENABLED:true}
+      max-rows-per-run: ${CERTPING_JOBS_FEATURE_LIFECYCLE_RECONCILE_MAX_ORGANIZATIONS_PER_RUN:1000}
+      max-run-duration: ${CERTPING_JOBS_FEATURE_LIFECYCLE_RECONCILE_MAX_RUN_DURATION:2m}
+    feature-lifecycle-transitions:
+      # Applies super-admin switch-offs and switch-ons the after-commit trigger lost (pod stopped,
+      # executor full) and sends lifecycle emails still owed. Never paused by an ops flag.
+      fixed-delay:      ${CERTPING_JOBS_FEATURE_LIFECYCLE_TRANSITIONS_FIXED_DELAY:PT1M}
+      enabled:          ${CERTPING_JOBS_FEATURE_LIFECYCLE_TRANSITIONS_ENABLED:true}
+      max-rows-per-run: ${CERTPING_JOBS_FEATURE_LIFECYCLE_TRANSITIONS_MAX_ORGANIZATIONS_PER_RUN:1000}
+      max-run-duration: ${CERTPING_JOBS_FEATURE_LIFECYCLE_TRANSITIONS_MAX_RUN_DURATION:2m}
+    audit-partitions:
+      # Keeps audit_events partitioned three months ahead and alerts when rows reach the default
+      # partition (AuditPartitionJob). Idempotent; every replica may run it.
+      cron:    "${CERTPING_JOBS_AUDIT_PARTITIONS_CRON:0 17 */6 * * *}"
+      enabled: ${CERTPING_JOBS_AUDIT_PARTITIONS_ENABLED:true}
+    audit-retention:
+      # Drops the audit_events months older than global_settings.audit_retention_months (AuditRetentionJob):
+      # whole months, one per transaction, so rows are kept up to one month longer than the setting. One
+      # replica drops per run (advisory lock). Nothing is dropped until a super admin has confirmed the period
+      # (PUT /api/v1/admin/settings/audit-retention). The first confirmation and every shortening start
+      # grace, during which runs are skipped: a period takes effect at a later run, never when it is saved.
+      # Ops kill switch: AUDIT_RETENTION_PURGE. 04:30 UTC, after soft-delete-purge (3 AM) and
+      # expiry-cleanup (4 AM).
+      cron:    "${CERTPING_JOBS_AUDIT_RETENTION_CRON:0 30 4 * * *}"
+      enabled: ${CERTPING_JOBS_AUDIT_RETENTION_ENABLED:true}
+      grace:   ${CERTPING_JOBS_AUDIT_RETENTION_GRACE:24h}
+  # Queue-depth / DLQ alerts (QueueDepthAlertService). Gated by certping.jobs.queue-alert.* AND the
+  # QUEUE_DEPTH_ALERTS platform feature flag (seeded ENABLED). entities is empty by default = no-op.
+  alerts:
+    queue-depth:
+      default-active-threshold: ${CERTPING_ALERTS_QUEUE_DEPTH_DEFAULT_ACTIVE_THRESHOLD:1000}
+      default-dlq-threshold:    ${CERTPING_ALERTS_QUEUE_DEPTH_DEFAULT_DLQ_THRESHOLD:1}
+      cooldown-minutes:         ${CERTPING_ALERTS_QUEUE_DEPTH_COOLDOWN_MINUTES:60}
+      dashboard-url:            ${CERTPING_ALERTS_QUEUE_DEPTH_DASHBOARD_URL:}
+      entities: []   # message queue channels to watch, each {name, active-threshold, dlq-threshold}
+  # The audit-log list (GET /api/v1/audit-logs) counts matching rows only up to count-cap: an exact
+  # count of an active organization's millions of rows outlasts the statement timeout. Past the cap
+  # the response says totalElementsCapped and serves no rows beyond it. A count that a selective
+  # filter makes slow gives up after count-timeout-ms and the page falls back to a lower-bound total.
+  # The JDBC query timeout is whole seconds: the value is rounded up (1500 -> 2 s) and must be at
+  # least 1000.
+  audit:
+    count-cap: ${CERTPING_AUDIT_COUNT_CAP:10000}
+    count-timeout-ms: ${CERTPING_AUDIT_COUNT_TIMEOUT_MS:3000}
+    # The audit list's own query timeout (rows and name lookups; whole seconds, at least 1000). A list
+    # that outlasts it is a 503 QUERY_TIMEOUT: narrow the filters or the range.
+    list-timeout-ms: ${CERTPING_AUDIT_LIST_TIMEOUT_MS:10000}
+    # How far back customers see their trail (AuditTrailReader): an earlier "from" is clamped and the
+    # page reports visibleFrom. Rows are kept longer (the retention setting); support exports older ones.
+    customer-visible-days: ${CERTPING_AUDIT_CUSTOMER_VISIBLE_DAYS:90}
+    # Exports (AuditTrailExporter): at most export-max-rows rows (a larger one is refused with
+    # EXPORT_TOO_LARGE), exports-per-hour per organization (counted from the export rows themselves, so
+    # every pod shares the limit), and export-timeout-ms for the streamed query (whole seconds).
+    export-max-rows: ${CERTPING_AUDIT_EXPORT_MAX_ROWS:10000}
+    exports-per-hour: ${CERTPING_AUDIT_EXPORTS_PER_HOUR:10}
+    export-timeout-ms: ${CERTPING_AUDIT_EXPORT_TIMEOUT_MS:25000}
+    # Exports streaming at once on one pod (each holds a pool connection and an MVC async thread, MvcAsyncConfig);
+    # another is refused with 503 EXPORT_BUSY. And how long an export waits for another export of the same
+    # organization to pass its gate before 429 EXPORT_IN_PROGRESS.
+    export-concurrency: ${CERTPING_AUDIT_EXPORT_CONCURRENCY:4}
+    export-lock-timeout-ms: ${CERTPING_AUDIT_EXPORT_LOCK_TIMEOUT_MS:5000}
+    # The bounded writer for audit_events rows that are not part of a caller's transaction
+    # (AuditAsyncWriter). A full queue drops and counts (certping_audit_dropped_total); the capacity
+    # covers about a minute of a Postgres failover. It drains on shutdown within
+    # min(spring.lifecycle.timeout-per-shutdown-phase - 6s, 10s); rows after that are written on the
+    # caller's thread, one at a time, for late-window.
+    async:
+      queue-capacity: ${CERTPING_AUDIT_ASYNC_QUEUE_CAPACITY:10000}
+      batch-size:     ${CERTPING_AUDIT_ASYNC_BATCH_SIZE:500}
+      flush-interval: ${CERTPING_AUDIT_ASYNC_FLUSH_INTERVAL:1s}
+      write-timeout:  ${CERTPING_AUDIT_ASYNC_WRITE_TIMEOUT:5s}
+      retry-for:      ${CERTPING_AUDIT_ASYNC_RETRY_FOR:30s}
+      late-window:    ${CERTPING_AUDIT_ASYNC_LATE_WINDOW:5s}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+      base-path: /actuator
+  endpoint:
+    health:
+      # Public on the install's API host, and every customer token counts as authorized, so components and
+      # their details stay hidden from everyone. The probes only read the status.
+      show-details: never
+      probes:
+        enabled: true
+  # The readiness group is readinessState alone and never consults the database. Add db to
+  # group.readiness.include before pointing a probe at it.
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+    # Redis only backs the access token revocation check and the shared feature flags, both of
+    # which fail open, so a Redis outage must not fail pod probes. Opt in per environment once
+    # Redis becomes a hard dependency.
+    redis:
+      enabled: ${REDIS_HEALTH_ENABLED:false}
+
+logging:
+  pattern:
+    # Every log line carries [reqId corrId messageId orgId] so a single request can be traced
+    # across services. Stack traces are appended on the same log event so the prefix is inherited.
+    console: "%d{yyyy-MM-dd HH:mm:ss} [req=%X{requestId:-} corr=%X{correlationId:-} msg=%X{messageId:-} org=%X{organizationId:-}] %-5level %logger{36} - %msg%n"
+
+app:
+  dashboard-base-url: ${APP_DASHBOARD_BASE_URL}
+  # Frontend base URL embedded in the password-reset links sent to users.
+  # Required — must be set explicitly (no fallback). The auth UI may live on a different
+  # host than the dashboard, so we don't conflate the two.
+  frontend-base-url: ${FRONTEND_BASE_URL}
+
+  # First-run SUPER_ADMIN local account (see SuperAdminBootstrapInitializer).
+  # Optional unattended bootstrap of the first Platform Super Admin. Leave all of these empty (the
+  # default) and the web app asks for the first admin on first run instead. There is no built-in
+  # account or password.
+  bootstrap-super-admin:
+    username: ${BOOTSTRAP_SUPER_ADMIN_USERNAME:}
+    email: ${BOOTSTRAP_SUPER_ADMIN_EMAIL:}
+    password: ${BOOTSTRAP_SUPER_ADMIN_PASSWORD:}
+    display-name: ${BOOTSTRAP_SUPER_ADMIN_DISPLAY_NAME:}
+
+  # Local-auth password hashing.
+  #
+  # Versioned AES-256 peppers used by PepperedPasswordEncoder to AES-GCM-encrypt
+  # the BCrypt hash before storage. Multi-version support enables transparent
+  # background rotation (see PasswordHashRotationService).
+  #
+  # Stored format: $enc1$<pepperVersion>$<nonce>$<ciphertext>
+  #
+  # Each key must decode to exactly 32 bytes (generate: openssl rand -base64 32).
+  # active-version must be a key in keys{} that has a non-blank value.
+  # App FAILS TO START otherwise.
+  #
+  # Adding a new version (e.g. v3): add `v3: ${PASSWORD_PEPPER_V3:}` below,
+  # and set PASSWORD_PEPPER_V3 wherever the deployment keeps its secrets.
+  auth:
+    password-pepper:
+      active-version: ${PASSWORD_PEPPER_ACTIVE_VERSION:v1}
+      keys:
+        v1: ${PASSWORD_PEPPER_V1:}
+        v2: ${PASSWORD_PEPPER_V2:}
+
+  integrations:
+    # Webhook and ServiceNow URLs are configured by organization admins, so a delivery refuses any host that
+    # resolves to a private, loopback, link-local (169.254.169.254), carrier-grade NAT or unique-local
+    # address, checked when the connection is made (GuardedHttpClients). Set true only for an installation
+    # that genuinely posts to a ServiceNow or webhook endpoint on its own network.
+    allow-private-addresses: ${INTEGRATIONS_ALLOW_PRIVATE_ADDRESSES:false}
+    delivery:
+      connect-timeout: ${INTEGRATIONS_DELIVERY_CONNECT_TIMEOUT:PT3S}
+      read-timeout:    ${INTEGRATIONS_DELIVERY_READ_TIMEOUT:PT5S}
+  incidents:
+    pagerduty:
+      base-url:        ${INCIDENTS_PAGERDUTY_BASE_URL:https://events.pagerduty.com}
+      connect-timeout: ${INCIDENTS_PAGERDUTY_CONNECT_TIMEOUT:PT3S}
+      read-timeout:    ${INCIDENTS_PAGERDUTY_READ_TIMEOUT:PT5S}
+    service-now:
+      connect-timeout: ${INCIDENTS_SERVICENOW_CONNECT_TIMEOUT:PT3S}
+      read-timeout:    ${INCIDENTS_SERVICENOW_READ_TIMEOUT:PT10S}
+
+# Auth: token secrets.
+# Secrets are HS256-signed JWTs; each purpose has its own secret to prevent
+# token-confusion attacks (a reset token cannot be replayed as an access token).
+jwt:
+  # Access and refresh tokens: RS256, verified by every service from /.well-known/jwks.json.
+  # Rotation runbook and key generation: docs/operations.md#jwt-signing-keys.
+  issuer:              ${JWT_ISSUER:}
+  audience:            ${JWT_AUDIENCE:certping-api}
+  signing-key-id:      ${JWT_SIGNING_KEY_ID:}
+  signing-private-key: ${JWT_SIGNING_PRIVATE_KEY:}
+  published-keys:      ${JWT_PUBLISHED_KEYS:}
+  # Password-reset tokens are separate HS256 tokens, never bearer tokens.
+  password-reset-secret:       ${PASSWORD_RESET_TOKEN_SECRET:}
+  password-reset-expiry-hours: 1
+
+
+notification-service:
+  base-url: ${NOTIFICATION_SERVICE_BASE_URL}
+
+# GET /api/v1/public/status probes {base-url}/actuator/health/status of the installation's own agent
+# (the bundled one in Compose and all-in-one). No default: a missing value must fail startup, not
+# probe a guess.
+public-status:
+  agent-base-url: ${STATUS_AGENT_BASE_URL}

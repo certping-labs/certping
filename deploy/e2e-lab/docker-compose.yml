@@ -1,0 +1,93 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# CertPing end-to-end lab. Everything runs locally; nothing reaches a real CA, DNS provider or
+# cloud. See README.md. Started and checked by run.sh.
+name: certping-e2e
+
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  zones:
+  certping-data:
+
+services:
+  dnsapi:
+    image: python:3.13-alpine
+    command: ["python", "-u", "/app/server.py"]
+    volumes:
+      - ./dnsapi:/app:ro
+      - zones:/zones
+    networks:
+      lab:
+        ipv4_address: 172.30.0.54
+
+  coredns:
+    image: coredns/coredns:1.12.0
+    command: ["-conf", "/etc/coredns/Corefile"]
+    depends_on: [dnsapi]
+    volumes:
+      - ./coredns/Corefile:/etc/coredns/Corefile:ro
+      - zones:/zones:ro
+    networks:
+      lab:
+        ipv4_address: 172.30.0.53
+
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:latest
+    command: ["-config", "/lab/pebble.json", "-dnsserver", "172.30.0.53:53"]
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+      PEBBLE_WFE_NONCEREJECT: "0"
+      PEBBLE_AUTHZREUSE: "0"
+    volumes:
+      - ./pebble.json:/lab/pebble.json:ro
+    networks:
+      lab:
+        ipv4_address: 172.30.0.14
+
+  k3s:
+    image: rancher/k3s:v1.31.4-k3s1
+    command: ["server", "--disable=traefik", "--disable=metrics-server", "--tls-san=k3s"]
+    privileged: true
+    tmpfs: ["/run", "/var/run"]
+    networks:
+      lab:
+        ipv4_address: 172.30.0.16
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports: ["8025:8025"]
+    networks:
+      lab:
+        ipv4_address: 172.30.0.25
+
+  certping:
+    image: ${CERTPING_IMAGE:-certping-allinone:dev}
+    depends_on: [coredns, pebble, mailpit]
+    ports: ["8090:80"]
+    dns: [172.30.0.53]
+    mem_limit: 4g
+    environment:
+      CERTPING_URL: http://localhost:8090
+      ACME_DIRECTORY_URL: https://pebble:14000/dir
+      CERTPING_EXTRA_CA_CERTS: /lab/pebble-ca.pem
+      CERTPING_DNS_API_URL: http://dnsapi:8080/api/v1/domains/token-api
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      MAIL_STARTTLS: "false"
+      MAIL_SMTP_AUTH: "false"
+      # Run the daily jobs every minute so the lab sees them work.
+      CERTPING_JOBS_TRIGGER_RENEWALS_CRON: "0 * * * * *"
+      CERTPING_JOBS_TRIGGER_EXPIRY_ALERTS_CRON: "30 * * * * *"
+      EMAIL_FROM: certping@lab.test
+    volumes:
+      - certping-data:/var/lib/certping
+      - ./.work/pebble-ca.pem:/lab/pebble-ca.pem:ro
+    networks:
+      lab:
+        ipv4_address: 172.30.0.10

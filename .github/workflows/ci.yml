@@ -1,0 +1,307 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: CI
+
+# Pull request and main-branch checks. Each app's job runs only when that app
+# (or something every app depends on, such as this workflow or the Makefile)
+# changed. The `ci-required` job always runs and is the single check to mark as
+# required: it passes when every job that ran passed and skipped jobs count as
+# not needed, so a docs-only PR never waits on a check that will never start.
+#
+# Release runs call this workflow with `all: true` to test the exact commit.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  # Nightly full run of main: a test that fails only sometimes shows up here within a day, not in
+  # an unrelated pull request.
+  schedule:
+    - cron: "13 3 * * *"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      all:
+        description: Run every job regardless of changed paths
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow_ref }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Detect changed apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists PR files through the API
+    outputs:
+      web: ${{ steps.pick.outputs.web }}
+      server: ${{ steps.pick.outputs.server }}
+      agent: ${{ steps.pick.outputs.agent }}
+      notifier: ${{ steps.pick.outputs.notifier }}
+      helm: ${{ steps.pick.outputs.helm }}
+      notices: ${{ steps.pick.outputs.notices }}
+      workflows: ${{ steps.pick.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            shared:
+              - Makefile
+              - .github/workflows/ci.yml
+            web:
+              - apps/web/**
+            server:
+              - apps/server/**
+            agent:
+              - apps/agent/**
+            notifier:
+              - apps/notifier/**
+            helm:
+              - deploy/charts/**
+            # Inputs of the third-party notices besides the apps themselves.
+            notices:
+              - licenses/**
+              - .github/scripts/third-party-notices.*
+              - LICENSE
+              - NOTICE
+            workflows:
+              - .github/workflows/**
+              - .github/actionlint.yaml
+      - name: Decide which jobs run
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          ALL_INPUT: ${{ inputs.all }}
+          SHARED: ${{ steps.filter.outputs.shared }}
+          WEB: ${{ steps.filter.outputs.web }}
+          SERVER: ${{ steps.filter.outputs.server }}
+          AGENT: ${{ steps.filter.outputs.agent }}
+          NOTIFIER: ${{ steps.filter.outputs.notifier }}
+          HELM: ${{ steps.filter.outputs.helm }}
+          NOTICES: ${{ steps.filter.outputs.notices }}
+          WORKFLOWS: ${{ steps.filter.outputs.workflows }}
+        run: |
+          # Pushes to main, manual runs and release calls test everything.
+          all=false
+          if [ "$EVENT" != "pull_request" ] || [ "$ALL_INPUT" = "true" ] || [ "$SHARED" = "true" ]; then
+            all=true
+          fi
+          for name in web server agent notifier helm notices workflows; do
+            upper=$(echo "$name" | tr '[:lower:]' '[:upper:]')
+            value="${!upper:-false}"
+            if [ "$all" = "true" ]; then value=true; fi
+            echo "$name=$value" >> "$GITHUB_OUTPUT"
+            echo "$name: $value"
+          done
+
+  web:
+    name: Web (lint, typecheck, test, build)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: make web-ci
+
+  java:
+    name: ${{ matrix.app }} (Maven verify)
+    needs: changes
+    if: >-
+      needs.changes.outputs.server == 'true' ||
+      needs.changes.outputs.agent == 'true' ||
+      needs.changes.outputs.notifier == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [server, agent, notifier]
+    steps:
+      - name: Skip unchanged app
+        id: gate
+        env:
+          APP: ${{ matrix.app }}
+          SERVER: ${{ needs.changes.outputs.server }}
+          AGENT: ${{ needs.changes.outputs.agent }}
+          NOTIFIER: ${{ needs.changes.outputs.notifier }}
+        run: |
+          upper=$(echo "$APP" | tr '[:lower:]' '[:upper:]')
+          echo "run=${!upper}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: steps.gate.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: apps/${{ matrix.app }}/pom.xml
+      # GitHub-hosted runners have Docker, so Testcontainers suites run here.
+      - name: Maven verify
+        if: steps.gate.outputs.run == 'true'
+        run: make ${{ matrix.app }}-ci
+      - name: Upload test reports
+        if: failure() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports-${{ matrix.app }}
+          path: |
+            apps/${{ matrix.app }}/target/surefire-reports/
+            apps/${{ matrix.app }}/target/failsafe-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  helm:
+    name: Helm charts
+    needs: changes
+    if: needs.changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # GitHub-hosted runners ship helm; fail here rather than let `make helm-lint` skip quietly.
+      - run: helm version
+      - run: make helm-lint
+
+  # The images ship licenses/<image>/THIRD-PARTY-NOTICES.txt (copied to apps/<app>/licenses/),
+  # generated from the dependencies. Fails when a dependency change was committed without
+  # regenerating them: run .github/scripts/third-party-notices.sh and commit the result.
+  notices:
+    name: Third-party notices up to date
+    needs: changes
+    if: >-
+      needs.changes.outputs.notices == 'true' ||
+      needs.changes.outputs.web == 'true' ||
+      needs.changes.outputs.server == 'true' ||
+      needs.changes.outputs.agent == 'true' ||
+      needs.changes.outputs.notifier == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: apps/*/pom.xml
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: make web-setup
+      - name: Check the notices
+        # Maven downloads the dependencies here (the script defaults to offline).
+        env:
+          MVN_OFFLINE: ""
+        run: make notices-check
+
+  actionlint:
+    name: Workflow lint
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install actionlint 1.7.12 (checksum verified)
+        run: |
+          curl -fsSLo actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tgz" | sha256sum -c -
+          tar -xzf actionlint.tgz actionlint
+      - run: ./actionlint -color
+
+  license-headers:
+    name: Copyright and license headers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make license-headers-check
+
+  # Every commit in a pull request carries a DCO sign-off from its author (CONTRIBUTING.md).
+  # Bot commits are skipped: Dependabot signs off with an address other than its author's.
+  dco:
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check that every commit is signed off by its author
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          missing=0
+          while IFS= read -r sha; do
+            author="$(git log -1 --format='%an <%ae>' "$sha")"
+            case "$author" in *'[bot]'*) continue ;; esac
+            if ! git log -1 --format='%(trailers:key=Signed-off-by,valueonly)' "$sha" | grep -Fqix "$author"; then
+              echo "::error::Commit $sha has no 'Signed-off-by: $author'. Sign off with git commit -s, or fix the branch with git rebase --signoff main."
+              missing=1
+            fi
+          done < <(git rev-list --no-merges "$BASE..$HEAD")
+          exit "$missing"
+
+  ci-required:
+    name: ci-required
+    if: always()
+    needs: [changes, web, java, helm, notices, actionlint, license-headers, dco]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          # success and skipped are fine; failure and cancelled are not.
+          bad=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")')
+          if [ -n "$bad" ]; then
+            echo "::error::Required jobs did not pass: $bad"
+            exit 1
+          fi

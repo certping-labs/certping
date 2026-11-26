@@ -1,0 +1,17 @@
+# Code owners are requested for review automatically. Review is enforced only
+# once branch protection requires it.
+#
+# Reviews come from the CertPing core team (@certping-labs/certping), listed in
+# MAINTAINERS.md. A pull request needs one approval from a maintainer other than
+# its author.
+
+*                     @certping-labs/certping
+
+# Security-sensitive paths: key handling, credentials, deployment kits, CI,
+# release and the security policy.
+/apps/agent/          @certping-labs/certping
+/apps/server/         @certping-labs/certping
+/deploy/              @certping-labs/certping
+/.github/             @certping-labs/certping
+/SECURITY.md          @certping-labs/certping
+/.github/RELEASING.md @certping-labs/certping

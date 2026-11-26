@@ -1,0 +1,11 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Scripts and config are copied into Linux images, so keep LF on every checkout, Windows included.
+* text=auto eol=lf
+
+*.png binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.ttf binary
