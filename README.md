@@ -25,9 +25,13 @@
 
 ## What CertPing does
 
-Certificates expire, and an expired certificate takes a site down. CertPing keeps track of your
-TLS certificates, renews them before they expire, and helps you get ready for post-quantum
-cryptography:
+Certificates expire, and an expired certificate takes a site down. The deadline is real.
+Certificates are capped at 200 days now, 100 days from March 2027, and 47 days from March 2029
+([CA/B Forum](https://cabforum.org/2025/04/11/ballot-sc081v3-introduce-schedule-of-reducing-validity-and-data-reuse-periods/)).
+Renewing by hand will not keep up.
+
+CertPing keeps track of your TLS certificates, renews them before they expire, and helps you get
+ready for post-quantum cryptography:
 
 1. **Find** the certificates you already have in Kubernetes, AWS Certificate Manager and Azure
    Key Vault.
