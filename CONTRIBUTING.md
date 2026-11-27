@@ -139,7 +139,8 @@ make scan-deps      # trivy over dependencies, Dockerfiles and charts
 
 After any dependency change (a `pom.xml`, `package.json` or lockfile, or a base image), run
 `.github/scripts/third-party-notices.sh` (or `make notices`) and commit the files it updates under
-`licenses/` and `apps/*/licenses/`. It needs Maven with the apps' dependencies downloaded (run a
+`licenses/` and `apps/*/licenses/`. A base image change also needs the versions read from the new
+image ("Base image updates" in [.github/RELEASING.md](.github/RELEASING.md)). It needs Maven with the apps' dependencies downloaded (run a
 build first), JDK 25, Node.js 24 and `pnpm install` done in `apps/web`. CI runs it with `--check`
 (`make notices-check`) and fails when the files are out of date.
 

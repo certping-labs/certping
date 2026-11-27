@@ -465,7 +465,7 @@ for (const b of BASE_IMAGES) {
   const pins = (line) => line.includes(`@${b.digest}`) && (line.includes(`${b.image}@`) || line.includes(`${b.image}:`));
   for (const f of b.dockerfiles) {
     if (!fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').some(pins)) {
-      fail(`${f} no longer pins ${b.image}@${b.digest}: update BASE_IMAGES and the versions read from it`);
+      fail(`${f} no longer pins ${b.image}@${b.digest}: update BASE_IMAGES and the versions read from it (.github/RELEASING.md, "Base image updates")`);
     }
   }
 }
@@ -584,6 +584,13 @@ function libvipsSection(web) {
 
   const legal = new Map(); // hash -> { text, from: [] }
   const base = path.join(COMPONENTS, `sharp-libvips-${pkgVersion}`);
+  // The Release workflow publishes the source of every library from sources.txt.
+  const sourcesFile = path.join(base, 'sources.txt');
+  if (!fs.existsSync(sourcesFile)) fail(`no ${path.relative(ROOT, sourcesFile)}: list the source archives of sharp-libvips ${pkgVersion}`);
+  const sourceLibs = new Set(readText(sourcesFile).split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\s+/)[0]));
+  for (const lib of [...Object.keys(versions), 'sharp-libvips']) {
+    if (!sourceLibs.has(lib)) fail(`${path.relative(ROOT, sourcesFile)} has no source archive for ${lib}`);
+  }
   for (const [lib, version] of Object.entries(versions)) {
     const libDir = path.join(base, `${lib}-${version}`);
     if (!fs.existsSync(libDir)) fail(`no legal files for ${lib} ${version} in libvips: add ${path.relative(ROOT, libDir)}/`);
@@ -720,7 +727,7 @@ const UBI9_SOURCE = {
   locations: [
     `Base image: ${baseImage('registry.access.redhat.com/ubi9/openjdk-25-runtime')}`,
     'OpenJDK: https://github.com/openjdk/jdk25u (tag jdk-25.0.5+8), from which Red Hat builds the\n    source RPM java-25-openjdk-25.0.5.0.8-1.0.el9.src.rpm',
-    'Base image packages: the UBI 9 source repositories,\n    https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/<arch>/{baseos,appstream}/source/SRPMS/\n    (they keep only the current build of each package; the builds in this image are covered by\n    the offer above)',
+    'Base image packages: the UBI 9 source repositories,\n    https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/<arch>/{baseos,appstream}/source/SRPMS/\n    (their metadata lists only the current build of each package; the builds in this image are\n    in the published source above)',
   ],
 };
 
@@ -736,6 +743,7 @@ function webSource(libvips) {
   const vips = libvipsSource(libvips);
   const image = BASE_IMAGES.find((b) => b.image === 'registry.access.redhat.com/ubi10/nodejs-24');
   return {
+    libvips: true,
     components: [
       'the operating system packages of the base image licensed under the GPL or the LGPL; list them\n    with: rpm -qa --qf \'%{NAME} %{VERSION}-%{RELEASE}: %{LICENSE}\\n\'',
       vips.component,
@@ -751,6 +759,7 @@ function webSource(libvips) {
 function allInOneSource(libvips) {
   const vips = libvipsSource(libvips);
   return {
+    libvips: true,
     components: [
       'Eclipse Temurin OpenJDK 25.0.5+8 JRE (GPL-2.0 with the Classpath Exception)',
       'the Ubuntu packages in the image licensed under the GPL or the LGPL; list them with:\n    dpkg-query -W -f \'${source:Package} ${source:Version}\\n\' and see /usr/share/doc/<package>/copyright',
@@ -765,12 +774,24 @@ function allInOneSource(libvips) {
   };
 }
 
-function sourceSection(source) {
+function sourceSection(source, image) {
   const list = (items) => items.map((i) => `  - ${i}`).join('\n');
   return `Some components of this image are licensed under a version of the GNU General Public License
 (GPL) or the GNU Lesser General Public License (LGPL):
 
 ${list(source.components)}
+
+Published source: each release publishes, next to the image in the same registry, the source
+packages of every operating system package in the image at the exact versions it contains${source.libvips ? ',\nand the source archives, patches and build scripts of libvips and the libraries bundled in it,\nwith the Rust crates of librsvg' : ''}:
+
+    ghcr.io/certping-labs/${image}-source:<version>
+
+where <version> is the version of this image (0.1.0 for ${image}:0.1.0). SOURCES.txt in it
+lists each file with its SHA-256 and where it was obtained. Download it with an OCI client, for
+example: oras pull ghcr.io/certping-labs/${image}-source:<version>
+The release notes and release-metadata.json of each release name it with its digest:
+https://github.com/certping-labs/certping/releases
+It is kept for as long as the image is distributed, and for at least three years after.
 
 Written offer: for at least three years after Seaionl Inc. last distributes this image, Seaionl
 Inc. will give any third party, on request, a complete machine-readable copy of the corresponding
@@ -801,7 +822,7 @@ function licenseLabel(c) {
   return c.licenses.join(' AND ');
 }
 
-function render({ title, intro, runtime, groups, source }) {
+function render({ title, image, intro, runtime, groups, source }) {
   const out = [];
   const usedTexts = new Set();
   const notices = new Map(); // hash -> { text, from: Set }
@@ -893,7 +914,7 @@ under, the license named.\n\n`);
 
   // 7. Source code
   out.push(heading(7, 'Source code'));
-  out.push(sourceSection(source));
+  out.push(sourceSection(source, image));
   return out.join('');
 }
 
@@ -908,8 +929,8 @@ image ships; do not edit it by hand.
 CertPing is Copyright 2024-2026 Seaionl Inc. and is licensed under the Apache License 2.0 (LICENSE,
 beside this file). Third-party components remain under their own licenses, given below. In the
 image these files are in ${location}. Source code for CertPing:
-https://github.com/certping-labs/certping. Section 7 offers the source code of the components
-licensed under the GPL or the LGPL.`;
+https://github.com/certping-labs/certping. Section 7 says where the source code of the components
+licensed under the GPL or the LGPL is published, and offers it in writing.`;
 }
 
 const JAVA_APPS = {
@@ -932,6 +953,7 @@ const docs = {};
 for (const [app, image] of Object.entries(JAVA_APPS)) {
   docs[app] = render({
     title: `${image}: third-party notices`,
+    image,
     intro: intro(image, '/licenses/certping/'),
     runtime: [UBI_OPENJDK, OTEL_AGENT],
     groups: [{ heading: `Java libraries in /app/app.jar (BOOT-INF/lib)`, components: java[app] }],
@@ -940,6 +962,7 @@ for (const [app, image] of Object.entries(JAVA_APPS)) {
 }
 docs.web = render({
   title: 'certping-web: third-party notices',
+  image: 'certping-web',
   intro: intro('certping-web', '/licenses/certping/'),
   runtime: [UBI_NODE, ...FONTS, ...VENDORED, libvips].filter(Boolean),
   groups: [{ heading: 'npm packages (production dependencies of apps/web)', components: web }],
@@ -950,6 +973,7 @@ docs.web = render({
 // agent, which only the separate images include) plus its own runtime.
 docs['all-in-one'] = render({
   title: 'certping (all-in-one): third-party notices',
+  image: 'certping',
   intro: intro('certping all-in-one', '/licenses/certping/'),
   runtime: [...ALL_IN_ONE, ...FONTS, ...VENDORED, libvips].filter(Boolean),
   groups: [

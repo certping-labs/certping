@@ -56,9 +56,12 @@ reviews and publishes by hand.
      the settings, exceptions and blocking or report-only mode of the Security
      workflow (`.github/trivy.yaml`, `.github/.trivyignore.yaml`). In blocking
      mode an open finding stops the release before anything is tagged;
+   - when publishing, collects the corresponding source of each image and
+     pushes it next to the image as `ghcr.io/certping-labs/<image>-source:<version>`
+     before the image is tagged (see "Corresponding source" below);
    - when publishing, builds the all-in-one image `ghcr.io/certping-labs/certping:<version>`
      from those four images by digest (its arm64 half runs under QEMU), and
-     scans it the same way before tagging it;
+     scans it and publishes its source the same way before tagging it;
    - packages the self-hosting kits: `certping-compose-<version>.zip` (the
      Compose kit with the images pinned to the release, by digest when
      published) and the two Helm charts as `.tgz` with LICENSE and NOTICE;
@@ -67,14 +70,16 @@ reviews and publishes by hand.
      copies all five images unchanged (same digests) to
      `docker.io/<namespace>/certping` and `docker.io/<namespace>/certping-<app>`;
    - writes a CycloneDX SBOM per image, the image scan reports
-     (`trivy-<image>-linux-<arch>.json`), a `release-metadata.json` and a
-     `SHA256SUMS` file covering every attached file;
+     (`trivy-<image>-linux-<arch>.json`), a source index per image
+     (`source-<image>.txt`), a `release-metadata.json` and a `SHA256SUMS`
+     file covering every attached file;
    - signs pushed images with cosign (keyless), attaches build provenance and
      SBOM attestations to them, signs `SHA256SUMS` with cosign, and attests
      every attached file (public repository only);
    - creates a draft release with generated notes, contributor credits, the
-     image digests and a "Security scan status" section that says which scan
-     mode applied and what the image scan found. No tag exists yet.
+     image digests, the source locations and a "Security scan status" section
+     that says which scan mode applied and what the image scan found. No tag
+     exists yet.
 4. Edit the draft: fill in upgrade notes and breaking changes, check the
    generated notes and credits, and keep the scan status section as written.
    A dry-run draft (images not pushed) says so; delete it instead.
@@ -93,7 +98,7 @@ pull request flow below is followed by agreement rather than enforced.
 | Environments | Settings, Environments | `release` and `release-stable`, each with required reviewers (the `@certping-labs/certping` team) and **Deployment branches and tags** limited to `main`. Until they exist with reviewers, the approval jobs pass without asking. |
 | Default token permissions | Settings, Actions, General, Workflow permissions | **Read repository contents and packages permissions**. Each job asks for what it needs. Leave "Allow GitHub Actions to create and approve pull requests" off. |
 | Branch ruleset for `main` | Settings, Rules, Rulesets | Require a pull request with 1 approval and review from code owners (`@certping-labs/certping`), dismiss approvals on new pushes, require conversations to be resolved, allow squash merges only, block force pushes and deletion, and require the status checks `ci-required` (it includes the DCO sign-off check), `Dependency review`, `Secret scan (gitleaks)` and `Dependency and config scan (trivy)`. |
-| GHCR packages | Your profile or organization, Packages | After the first published release: set `certping`, `certping-server`, `certping-web`, `certping-agent`, `certping-notifier`, `charts/certping` and `charts/certping-agent` to public, and connect each to the `certping-labs/certping` repository. |
+| GHCR packages | Your profile or organization, Packages | After the first published release: set `certping`, `certping-server`, `certping-web`, `certping-agent`, `certping-notifier`, the source packages `certping-source`, `certping-server-source`, `certping-web-source`, `certping-agent-source`, `certping-notifier-source`, and `charts/certping` and `charts/certping-agent` to public, and connect each to the `certping-labs/certping` repository. The source packages must be public before the release is published: the notices in the images point to them. |
 | Code scanning | Settings, Security (Code security) | On. The weekly Image scan workflow uploads its results there. |
 | Docker Hub | Settings, Secrets and variables, Actions | Variable `DOCKERHUB_NAMESPACE` (the Docker Hub organization), secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (an access token with read and write scope). Create the repositories `certping`, `certping-server`, `certping-web`, `certping-agent` and `certping-notifier` in that organization first. Without the variable, releases go to GHCR only. |
 | Discussions | Settings, General, Features | On. The README, `SUPPORT.md` and the issue template link to it. |
@@ -128,8 +133,9 @@ mechanisms. Checking one does not check the others.
 | Source and tag authenticity: is this tag the commit the maintainers released? | The GitHub release is created by the Release workflow from a commit on `main`, with `--target <sha>`, and the tag is created on publish. Commit signatures are not required yet. | Release page, `release-metadata.json` (`commit`) |
 | Container image authenticity: was this image pushed by this repository's release workflow? | Sigstore keyless signature on the image digest. The signing identity is the Release workflow of `certping-labs/certping`, not a person's key. | `cosign verify` |
 | Build provenance: how and from what was it built? | SLSA build provenance attestation (GitHub artifact attestations) naming the workflow, the commit and the builder. | `gh attestation verify` |
-| Artifact integrity: are the files I downloaded the ones the release produced? | `SHA256SUMS` lists the checksums of every attached file (SBOMs, scan reports, Compose kit, Helm charts, metadata); the Sigstore bundle `SHA256SUMS.sigstore.json` signs that list; attestations cover every attached file. | `sha256sum -c`, `cosign verify-blob` |
+| Artifact integrity: are the files I downloaded the ones the release produced? | `SHA256SUMS` lists the checksums of every attached file (SBOMs, scan reports, source indexes, Compose kit, Helm charts, metadata); the Sigstore bundle `SHA256SUMS.sigstore.json` signs that list; attestations cover every attached file. | `sha256sum -c`, `cosign verify-blob` |
 | Known vulnerabilities at release time | The image scan reports, run on the pushed digests before tagging. They say what the vulnerability database knew that day, not that an image is free of vulnerabilities. | `trivy-*.json`, `release-metadata.json` (`image_scan`) |
+| Source of the GPL and LGPL components | The `-source` artifact of each image, its digest in the release notes and metadata, and the SHA-256 of every file in `source-<image>.txt`. | `oras pull`, `sha256sum -c` |
 
 Keyless signing needs a public Sigstore identity, so the workflow signs and
 attests only when the repository is public. `release-metadata.json`
@@ -200,6 +206,16 @@ image against today's database, scan it by digest yourself:
 Image scan workflow does that for the latest release and reports in the
 repository's Security tab.
 
+### Corresponding source
+
+```sh
+oras pull ghcr.io/certping-labs/certping-server-source:0.1.0@sha256:<digest> -o server-source
+cd server-source && grep -v '^#' SOURCES.txt | awk '{ print $1 "  " $2 }' | sha256sum -c
+```
+
+The digest is in the release notes and in `source-server.txt`, which is
+covered by `SHA256SUMS`.
+
 ### Compose kit and Helm charts
 
 `certping-compose-<version>.zip` and the chart `.tgz` files are in
@@ -222,6 +238,78 @@ verified:
   a digest per image yet. Check that the tag resolves to the digests in the
   release notes with
   `docker buildx imagetools inspect ghcr.io/certping-labs/certping-server:0.1.0`.
+
+## Corresponding source
+
+The images contain software under the GPL and the LGPL: GPL-3.0 userland
+(bash, coreutils, grep, sed, tar and others), LGPL libraries, OpenJDK (GPL-2.0
+with the Classpath Exception) and libvips (LGPL, used under LGPL-3.0 through
+sharp). Distributing them from a registry needs their corresponding source
+available from a designated place (GPL-3.0 section 6(d), LGPL-3.0 section 4).
+Each release publishes it next to each image:
+
+| Image | Source |
+| --- | --- |
+| `certping-<app>:<version>` | `certping-<app>-source:<version>` |
+| `certping:<version>` (all-in-one) | `certping-source:<version>` |
+
+Each is an OCI artifact in GHCR (`oras pull` restores the files) holding:
+
+- `rpm/` (UBI images): the source RPM of every installed package, at the
+  installed build, from the UBI CDN, with its Red Hat signature checked
+  against the keys in the image's base image. The CDN keeps superseded builds
+  by file name after the repository metadata (and so `dnf download --source`)
+  drops them.
+- `deb/` (all-in-one): the Ubuntu source package (`.dsc` and the files it
+  lists) of every installed package, at the installed version, from the
+  Ubuntu archive, or from Launchpad, which keeps every published version,
+  once the archive has dropped it; each file is checked against its `.dsc`.
+- `libvips/` (web and all-in-one): the source archives, patches and build
+  scripts of libvips and the libraries sharp-libvips builds into it, listed
+  with their SHA-256 in `licenses/components/sharp-libvips-<version>/sources.txt`,
+  and `librsvg-<version>-crates.tar` with the crates.io crates of librsvg's
+  `Cargo.lock`, each checked against the lockfile. The patches come from the
+  copies in `patches/` beside `sources.txt`, because their hosts generate them
+  on request. If a downloaded archive no longer matches its SHA-256, the
+  release stops: check what changed upstream before updating the line.
+- `SOURCES.txt`: every file with its SHA-256 and where it came from.
+
+The all-in-one's Eclipse Temurin JRE (GPL-2.0 with the Classpath Exception)
+is not an Ubuntu package, so `certping-source` does not hold it. The written
+offer and the upstream tag in section 7 of the image's notices cover it.
+
+Retention: never delete a `-source` package version while the image version
+it belongs to is available, and keep it for at least three years after that
+image was last distributed (including through Docker Hub). Deleting images
+and their source is a manual step; nothing in the workflows deletes package
+versions.
+
+## Base image updates
+
+`BASE_IMAGES` in `.github/scripts/third-party-notices.mjs` records the base
+image digests that the versions in the notices (OpenJDK, Node.js, Ubuntu and
+others) were read from. When a Dockerfile pins another digest, for example in
+Dependabot's weekly `chore(docker)` pull request, the "Third-party notices up
+to date" check fails until a maintainer updates them on that pull request:
+
+1. Check out the pull request branch.
+2. For each changed base image, read the versions from the new image, for
+   example:
+   ```sh
+   docker run --rm --entrypoint rpm registry.access.redhat.com/ubi9/openjdk-25-runtime@sha256:<digest> \
+     -q java-25-openjdk-headless
+   docker run --rm --entrypoint rpm registry.access.redhat.com/ubi10/nodejs-24@sha256:<digest> -q nodejs24
+   docker run --rm --entrypoint sh eclipse-temurin@sha256:<digest> -c 'java -version; . /etc/os-release; echo $VERSION'
+   ```
+3. Update the tag and digest in `BASE_IMAGES` and every version and source
+   location read from that image in `third-party-notices.mjs`.
+4. Run `.github/scripts/third-party-notices.sh`, then commit with a sign-off
+   (`git commit -s`) and push.
+
+This stays manual on purpose: the versions have to be read from the new
+image, and a commit pushed by a workflow with the default token would not
+start the pull request checks again, so the pull request could not merge
+without a manual step anyway.
 
 ## SBOM versus CBOM
 
@@ -248,4 +336,4 @@ out of the notes.
   operating system package, usually by updating the base image), or added as a
   narrow, expiring exception with an owner and rationale in
   `.github/.trivyignore.yaml`.
-- Dry runs push no images, so they do not scan images.
+- Dry runs push no images, so they do not scan images or collect their source.

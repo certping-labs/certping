@@ -9,11 +9,13 @@ name: Release
 # that exact commit, tests the commit again, builds the four application images
 # for linux/amd64 and linux/arm64 on native runners, assembles the all-in-one
 # image from them by digest, scans every image for vulnerabilities before it is
-# tagged, writes a CycloneDX SBOM per image, the Compose kit and Helm charts, a
-# release-metadata.json and a SHA256SUMS file, signs and attests what it can
-# (public repository only), and opens a DRAFT GitHub release for review. No tag
-# exists until a maintainer publishes the draft by hand; publishing creates the
-# tag on the release commit. See .github/RELEASING.md.
+# tagged, publishes the corresponding source of each image's operating system
+# packages and libvips next to it, writes a CycloneDX SBOM per image, the
+# Compose kit and Helm charts, a release-metadata.json and a SHA256SUMS file,
+# signs and attests what it can (public repository only), and opens a DRAFT
+# GitHub release for review. No tag exists until a maintainer publishes the
+# draft by hand; publishing creates the tag on the release commit. See
+# .github/RELEASING.md.
 #
 # Approval gates (GitHub environments):
 #   release         every run, before anything is built (the `approve` job)
@@ -30,8 +32,9 @@ name: Release
 #   - A public repository: native arm64 runners (ubuntu-24.04-arm), keyless
 #     signing and artifact attestations are free only on public repositories.
 #   - GHCR: after the first push, set each package (certping, certping-web,
-#     certping-server, certping-agent, certping-notifier and the two charts) to
-#     public and link it to this repository.
+#     certping-server, certping-agent, certping-notifier, the five matching
+#     <image>-source packages and the two charts) to public and link it to this
+#     repository.
 
 on:
   workflow_dispatch:
@@ -386,14 +389,75 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # The corresponding source of each image's operating system packages (and of libvips in the web
+  # image), published next to the image as ghcr.io/<owner>/certping-<app>-source:<version>
+  # before the image is tagged, so no tagged image exists without it (GPL-3.0 section 6(d),
+  # LGPL-3.0 section 4). The package list comes from the scan reports.
+  source:
+    name: Source of ${{ matrix.app }}
+    needs: [validate, build, scan]
+    if: always() && inputs.publish_images && needs.scan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write # push certping-<app>-source
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [web, server, agent, notifier]
+    env:
+      SOURCE_REF: ghcr.io/${{ github.repository_owner }}/certping-${{ matrix.app }}-source:${{ needs.validate.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-scan-${{ matrix.app }}
+          path: scan
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install oras 1.3.6 (checksum verified)
+        run: |
+          curl -fsSLo oras.tgz https://github.com/oras-project/oras/releases/download/v1.3.6/oras_1.3.6_linux_amd64.tar.gz
+          echo "66fb0ad7206f3f6fa77ed5b552049d364ccf4b50b1684554f731f76302b52ca0  oras.tgz" | sha256sum -c -
+          tar -xzf oras.tgz oras
+      # The source RPMs' signatures are checked with rpm and Red Hat's keys in the base image the
+      # Dockerfile pins by digest: the final images have had their package managers removed.
+      - name: Collect the source
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          flags=()
+          if [ "$APP" = "web" ]; then flags+=(--libvips); fi
+          base=$(awk '$1 == "FROM" && $2 ~ /^registry\.access\.redhat\.com\/.*@sha256:/ { print $2 }' "apps/$APP/Dockerfile" | tail -n1)
+          VERIFY_IMAGE="$base" .github/scripts/image-source.sh "${flags[@]}" source scan/trivy-*.json
+      - name: Push the source
+        env:
+          APP: ${{ matrix.app }}
+          VERSION: ${{ needs.validate.outputs.image_tag }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: .github/scripts/image-source-push.sh source "$SOURCE_REF" "certping-$APP" "source-$APP.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-source-${{ matrix.app }}
+          path: source-${{ matrix.app }}.txt
+          retention-days: 14
+          if-no-files-found: error
+
   publish:
     name: Publish ${{ matrix.app }}
-    needs: [validate, sbom, build, scan]
+    needs: [validate, sbom, build, source]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
     if: >-
       always() && inputs.publish_images &&
-      needs.sbom.result == 'success' && needs.build.result == 'success' && needs.scan.result == 'success'
+      needs.sbom.result == 'success' && needs.build.result == 'success' && needs.source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -474,7 +538,7 @@ jobs:
     # Assembled from the four application images just pushed, by digest, so it carries the same
     # layers. Only when images are published: without a push there is nothing to assemble from.
     # Its own steps are package installs on Ubuntu, so the arm64 half runs under QEMU. Pushed by
-    # digest only: all-in-one-publish tags it once it is scanned.
+    # digest only: all-in-one-publish tags it once it is scanned and its source is published.
     needs: [validate, publish]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
@@ -575,10 +639,54 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  all-in-one-publish:
-    name: Publish the all-in-one image
+  source-all-in-one:
+    name: Source of the all-in-one image
     needs: [validate, all-in-one, scan-all-in-one]
     if: always() && needs.scan-all-in-one.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write # push certping-source
+    env:
+      SOURCE_REF: ghcr.io/${{ github.repository_owner }}/certping-source:${{ needs.validate.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-scan-all-in-one
+          path: scan
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install oras 1.3.6 (checksum verified)
+        run: |
+          curl -fsSLo oras.tgz https://github.com/oras-project/oras/releases/download/v1.3.6/oras_1.3.6_linux_amd64.tar.gz
+          echo "66fb0ad7206f3f6fa77ed5b552049d364ccf4b50b1684554f731f76302b52ca0  oras.tgz" | sha256sum -c -
+          tar -xzf oras.tgz oras
+      - name: Collect the source
+        run: .github/scripts/image-source.sh --libvips source scan/trivy-*.json
+      - name: Push the source
+        env:
+          VERSION: ${{ needs.validate.outputs.image_tag }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: .github/scripts/image-source-push.sh source "$SOURCE_REF" certping source-all-in-one.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-source-all-in-one
+          path: source-all-in-one.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  all-in-one-publish:
+    name: Publish the all-in-one image
+    needs: [validate, all-in-one, source-all-in-one]
+    if: always() && needs.source-all-in-one.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -868,6 +976,14 @@ jobs:
               critical: ([$r[0].Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length),
               high: ([$r[0].Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length)}]' <<< "$scans")
           done
+          # source-<image>.txt: the published source of each image, first line "# Published as <ref>".
+          sources='[]'
+          for f in source-*.txt; do
+            [ -f "$f" ] || continue
+            ref=$(sed -n '1s/^# Published as //p' "$f")
+            image="${f#source-}"; image="${image%.txt}"
+            sources=$(jq -c --arg image "$image" --arg ref "$ref" --arg f "$f" '. + [{image: $image, ref: $ref, index: $f}]' <<< "$sources")
+          done
           compose=(certping-compose-*.zip)
           charts=(certping-*.tgz)
           bundle=$(jq -cn --arg compose "${compose[0]}" '{compose: $compose, charts: $ARGS.positional}' --args "${charts[@]}")
@@ -876,7 +992,7 @@ jobs:
             --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg scan "$SCAN_MODE" \
             --argjson pre "$PRERELEASE" --argjson pushed "$PUBLISH" --argjson public "$IS_PUBLIC" \
             --argjson images "$images" --argjson sboms "$sboms" --argjson scans "$scans" \
-            --argjson bundle "$bundle" '{
+            --argjson sources "$sources" --argjson bundle "$bundle" '{
               version: $version, prerelease: $pre, commit: $sha, repository: $repo,
               workflow_run: $run, built_at: $built,
               platforms: ["linux/amd64", "linux/arm64"],
@@ -890,6 +1006,7 @@ jobs:
                 note: (if ($pushed | not) then "Not run: the images were not pushed (dry run)."
                        elif $scan == "blocking" then "Every image, on both platforms, was scanned before it was tagged; the release fails on any fixable HIGH or CRITICAL finding not accepted in .github/.trivyignore.yaml."
                        else "Report-only: the open fixable HIGH and CRITICAL findings are in the reports. This release is not claimed to be free of known vulnerabilities." end)},
+              corresponding_source: $sources,
               self_hosting: $bundle,
               signing: {images_signed: ($pushed and $public), images_attested: ($pushed and $public),
                         checksums_signed: $public, artifacts_attested: $public,
@@ -917,6 +1034,7 @@ jobs:
             dist/image-*.txt
             dist/sbom-*.cdx.json
             dist/trivy-*.json
+            dist/source-*.txt
             dist/certping-compose-*.zip
             dist/certping-*.tgz
             dist/release-metadata.json
@@ -977,6 +1095,15 @@ jobs:
             fi
             echo "- Secret scan (gitleaks) and CI passed for \`$SHA\` (checked by the Release workflow)."
             echo
+            if [ "$PUBLISH" = "true" ]; then
+              echo "### Source code of GPL and LGPL components"
+              echo "The source packages of every operating system package in each image, at the versions it"
+              echo "contains, and the source of libvips and the libraries bundled in it (web and all-in-one), are"
+              echo "published next to the images. Download one with \`oras pull <reference>\`:"
+              echo
+              jq -r '.corresponding_source[] | "- \(.image): `\(.ref)` (files and checksums: `\(.index)`)"' dist/release-metadata.json
+              echo
+            fi
             echo "### Self-hosting"
             if [ "$PUBLISH" = "true" ]; then
               echo "- \`certping-compose-${VERSION#v}.zip\`: the Compose kit, with the images pinned to this release by digest."
@@ -992,8 +1119,9 @@ jobs:
             echo "  for the all-in-one image when images were pushed. This is not a cryptographic bill of"
             echo "  materials (CBOM) of your certificates; CertPing generates that in the product."
             echo "- \`trivy-<image>-linux-<arch>.json\`: the image scan reports, with every package in each image."
-            echo "- \`release-metadata.json\`: version, commit, workflow run, image digests, scan results and what"
-            echo "  was signed."
+            echo "- \`source-<image>.txt\`: where each image's source is published, and every file in it with its SHA-256."
+            echo "- \`release-metadata.json\`: version, commit, workflow run, image digests, scan results, source"
+            echo "  locations and what was signed."
             echo "- \`SHA256SUMS\`: checksums of the attached files."
             if [ "$IS_PUBLIC" = "true" ]; then
               echo "- \`SHA256SUMS.sigstore.json\`: Sigstore signature bundle for \`SHA256SUMS\`."

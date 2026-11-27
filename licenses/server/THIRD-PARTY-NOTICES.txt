@@ -7,8 +7,8 @@ image ships; do not edit it by hand.
 CertPing is Copyright 2024-2026 Seaionl Inc. and is licensed under the Apache License 2.0 (LICENSE,
 beside this file). Third-party components remain under their own licenses, given below. In the
 image these files are in /licenses/certping/. Source code for CertPing:
-https://github.com/certping-labs/certping. Section 7 offers the source code of the components
-licensed under the GPL or the LGPL.
+https://github.com/certping-labs/certping. Section 7 says where the source code of the components
+licensed under the GPL or the LGPL is published, and offers it in writing.
 
 ====================================================================================================
 1. Components of the image besides the application
@@ -6316,6 +6316,18 @@ Some components of this image are licensed under a version of the GNU General Pu
   - the operating system packages of the base image licensed under the GPL or the LGPL; list them
     with: rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}: %{LICENSE}\n'
 
+Published source: each release publishes, next to the image in the same registry, the source
+packages of every operating system package in the image at the exact versions it contains:
+
+    ghcr.io/certping-labs/certping-server-source:<version>
+
+where <version> is the version of this image (0.1.0 for certping-server:0.1.0). SOURCES.txt in it
+lists each file with its SHA-256 and where it was obtained. Download it with an OCI client, for
+example: oras pull ghcr.io/certping-labs/certping-server-source:<version>
+The release notes and release-metadata.json of each release name it with its digest:
+https://github.com/certping-labs/certping/releases
+It is kept for as long as the image is distributed, and for at least three years after.
+
 Written offer: for at least three years after Seaionl Inc. last distributes this image, Seaionl
 Inc. will give any third party, on request, a complete machine-readable copy of the corresponding
 source code of these components, to be distributed under the terms of the license of each
@@ -6331,5 +6343,5 @@ Where upstream publishes the source:
     source RPM java-25-openjdk-25.0.5.0.8-1.0.el9.src.rpm
   - Base image packages: the UBI 9 source repositories,
     https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/<arch>/{baseos,appstream}/source/SRPMS/
-    (they keep only the current build of each package; the builds in this image are covered by
-    the offer above)
+    (their metadata lists only the current build of each package; the builds in this image are
+    in the published source above)
