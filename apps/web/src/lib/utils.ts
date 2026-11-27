@@ -102,7 +102,7 @@ export function formatZodErrors(error?: ZodError) {
 
   const formattedErrors: Record<string, string> = {};
 
-  error.errors.forEach((err) => {
+  error.issues.forEach((err) => {
     if (err.path.length > 0) {
       const path = err.path.join(".");
       formattedErrors[path] = err.message;
@@ -110,7 +110,7 @@ export function formatZodErrors(error?: ZodError) {
   });
 
   if (Object.keys(formattedErrors).length === 0) {
-    return error.errors.map((e) => e.message).join(", ");
+    return error.issues.map((e) => e.message).join(", ");
   }
 
   return formattedErrors;

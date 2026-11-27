@@ -4,7 +4,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -150,7 +150,7 @@ export function InviteUserDialog({
   const form = useForm<InviteUserValues>({
     resolver: zodResolver(
       buildInviteUserSchema(Boolean(isSuperAdmin), superAdminRoleIds ?? []),
-    ),
+    ) as Resolver<InviteUserValues>,
     mode: "onBlur",
     reValidateMode: "onChange",
     defaultValues: EMPTY_INVITE_USER_VALUES,

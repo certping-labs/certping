@@ -42,6 +42,9 @@ import org.slf4j.Logger;
 @SecurityRequirement(name = "bearerAuth")
 public class NotificationController {
 
+    private static final List<String> STATUSES =
+            List.of("PENDING", "SENT", "DELIVERED", "FAILED", "READ", "SUPPRESSED");
+
     private final ProxyService proxyService;
 
     public NotificationController(ProxyService proxyService) {
@@ -64,7 +67,15 @@ public class NotificationController {
         Map<String, String> params = new HashMap<>();
         if (page != null) params.put("page", page.toString());
         if (size != null) params.put("size", size.toString());
-        if (status != null) params.put("status", status);
+        if (status != null) {
+            // Only the notifier's own statuses are forwarded, as our constants, never the caller's text.
+            String known = STATUSES.stream().filter(status::equals).findFirst().orElse(null);
+            if (known == null) {
+                return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"success\":false,\"message\":\"Unknown notification status\"}");
+            }
+            params.put("status", known);
+        }
 
         String organizationId = GatewayRequestContext.getOrganizationId();
         if (organizationId != null && !organizationId.isBlank()) {

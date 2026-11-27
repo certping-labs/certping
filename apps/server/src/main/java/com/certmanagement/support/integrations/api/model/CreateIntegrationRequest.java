@@ -27,7 +27,7 @@ public record CreateIntegrationRequest(
                 Required for SLACK and TEAMS.
                 Must be omitted for PAGERDUTY and SERVICENOW_ITSM.
                 """,
-                example = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+                example = "https://hooks.slack.com/services/your-workspace/your-channel/your-webhook-secret",
                 nullable = true)
         String webhookUrl,
         @Schema(

@@ -11,7 +11,7 @@ import React, {
   useState,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   KeyIcon,
@@ -320,7 +320,9 @@ function EditCredentialDialog({
     [credential?.configJson],
   );
   const form = useForm<EditCredentialValues>({
-    resolver: zodResolver(editCredentialSchema),
+    resolver: zodResolver(
+      editCredentialSchema,
+    ) as Resolver<EditCredentialValues>,
     defaultValues: {
       provider: credential?.providerName || "",
       credentialStorage: "vault",

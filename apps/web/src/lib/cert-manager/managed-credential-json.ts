@@ -19,7 +19,7 @@ import type { CredentialFormValidationValues } from "@/lib/cert-manager/credenti
 import { usesManagedStorage } from "@/lib/cert-manager/credential-storage";
 import { z } from "zod";
 
-const jsonRecordSchema = z.record(z.unknown());
+const jsonRecordSchema = z.record(z.string(), z.unknown());
 type JsonRecord = z.infer<typeof jsonRecordSchema>;
 type ManagedCredentialFormContext = {
   type: CredentialReferenceType;
