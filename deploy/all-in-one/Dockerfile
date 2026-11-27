@@ -20,9 +20,9 @@ ARG SERVER_IMAGE=ghcr.io/certping-labs/certping-server:${CERTPING_VERSION}
 ARG WEB_IMAGE=ghcr.io/certping-labs/certping-web:${CERTPING_VERSION}
 ARG AGENT_IMAGE=ghcr.io/certping-labs/certping-agent:${CERTPING_VERSION}
 ARG NOTIFIER_IMAGE=ghcr.io/certping-labs/certping-notifier:${CERTPING_VERSION}
-ARG NODE_IMAGE=node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f
-# caddy:2.8.4-alpine
-ARG CADDY_IMAGE=caddy:2.8.4-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+ARG NODE_IMAGE=node:24.22.3-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530
+# caddy:2.11.9-alpine
+ARG CADDY_IMAGE=caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
 
 FROM ${SERVER_IMAGE} AS server
 FROM ${WEB_IMAGE} AS web
@@ -33,7 +33,7 @@ FROM ${CADDY_IMAGE} AS caddy
 
 # Ubuntu 26.04 with a JRE 25: PostgreSQL 18, Valkey 9 (the BSD-licensed, Redis-compatible store
 # the server uses) and supervisor come from Ubuntu's own archive (valkey-server is in main).
-FROM eclipse-temurin:25-jre@sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0
+FROM eclipse-temurin:25-jre@sha256:4ed132f6832e9804b123e89a849a7b4502756ae64a4ee08ebab939d9d5d0a9fa
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \

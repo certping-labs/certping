@@ -373,7 +373,7 @@ function pnpmComponents(file) {
 // build-info` prints, and each <module>@<version>/ holds the legal files of that module's source
 // at that version (licenses/README.md says how they were collected).
 
-const CADDY = path.join(COMPONENTS, 'caddy-2.8.4');
+const CADDY = path.join(COMPONENTS, 'caddy-2.11.9');
 
 // Every license a module's license file states; some cover parts of a module with other terms.
 function goLicenseIds(text, where) {
@@ -398,7 +398,7 @@ function goModuleZip(mod, version) {
 function caddyModules() {
   const [first, ...rest] = readText(path.join(CADDY, 'modules.txt')).trim().split('\n');
   const toolchain = first.match(/^Go toolchain (go\S+)$/);
-  if (!toolchain) fail('caddy-2.8.4/modules.txt must start with "Go toolchain <version>"');
+  if (!toolchain) fail('caddy-2.11.9/modules.txt must start with "Go toolchain <version>"');
   const modules = [['go', toolchain[1]], ...rest.map((l) => l.trim().split(/\s+/))];
   return modules.map(([mod, version]) => {
     const dir = path.join(CADDY, `${mod}@${version}`);
@@ -431,32 +431,32 @@ function caddyModules() {
 const BASE_IMAGES = [
   {
     image: 'registry.access.redhat.com/ubi9/openjdk-25-runtime',
-    tag: '1.24-3.1793323806',
-    digest: 'sha256:2ddacad5332f4e481353668f210623f7e7420f1561515f5686e5abd33cd6d38f',
+    tag: '1.24-5.1795165358',
+    digest: 'sha256:1db3895f42eecbabea53523a25da537901b7ce599c404e179c5e6e4cdf1cedef',
     dockerfiles: ['apps/server/Dockerfile', 'apps/agent/Dockerfile', 'apps/notifier/Dockerfile'],
   },
   {
     image: 'registry.access.redhat.com/ubi10/nodejs-24',
-    tag: '10.3-1795423475',
-    digest: 'sha256:f4748b252f0f7353e0f617625ebcba5768e847dde6aaa4b116ac6e2a954c54b0',
+    tag: '10.3-1795479553',
+    digest: 'sha256:228c8675a62feb55f88dc9dee94d5a82e6f0e887ec47bd8f5e524a797a0984d7',
     dockerfiles: ['apps/web/Dockerfile'],
   },
   {
     image: 'eclipse-temurin',
     tag: '25-jre',
-    digest: 'sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0',
+    digest: 'sha256:4ed132f6832e9804b123e89a849a7b4502756ae64a4ee08ebab939d9d5d0a9fa',
     dockerfiles: ['deploy/all-in-one/Dockerfile'],
   },
   {
     image: 'caddy',
-    tag: '2.8.4-alpine',
-    digest: 'sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17',
+    tag: '2.11.9-alpine',
+    digest: 'sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0',
     dockerfiles: ['deploy/all-in-one/Dockerfile'],
   },
   {
     image: 'node',
-    tag: '24.13.0-bookworm-slim',
-    digest: 'sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f',
+    tag: '24.22.3-bookworm-slim',
+    digest: 'sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530',
     dockerfiles: ['deploy/all-in-one/Dockerfile'],
   },
 ];
@@ -489,7 +489,7 @@ META-INF/licenses/. The NOTICE files and the extra license files it bundles foll
 
 const UBI_OPENJDK = {
   title: 'Red Hat build of OpenJDK 25 on Red Hat Universal Base Image 9 (base image)',
-  version: '25.0.5 (package java-25-openjdk 25.0.5.0.8-1.0.el9)',
+  version: '25.0.5.1 (package java-25-openjdk 25.0.5.1.2-1.1.el9)',
   licenses: ['GPL-2.0-only WITH Classpath-exception-2.0'],
   where: 'registry.access.redhat.com/ubi9/openjdk-25-runtime',
   body: `CertPing runs on this JDK and does not modify it; the Classpath Exception lets the application
@@ -666,7 +666,7 @@ image. Source code: see section 7.`,
   },
   {
     title: 'Eclipse Temurin OpenJDK 25 JRE',
-    version: '25.0.5+8',
+    version: '25.0.5.1+2',
     licenses: ['GPL-2.0-only WITH Classpath-exception-2.0'],
     where: '/opt/java/openjdk',
     body: `The Java runtime of the server, agent and notifier. CertPing runs on it and does not modify it; the
@@ -692,17 +692,17 @@ Source code: see section 7.`,
   },
   {
     title: 'Caddy',
-    version: '2.8.4',
+    version: '2.11.9',
     licenses: ['Apache-2.0'],
-    where: '/usr/local/bin/caddy (from the caddy:2.8.4-alpine image)',
+    where: '/usr/local/bin/caddy (from the caddy:2.11.9-alpine image)',
     body: `Copyright 2015 Matthew Holt and The Caddy Authors. Source: https://github.com/caddyserver/caddy
-(tag v2.8.4). Caddy is a Go program: the binary contains the Go standard library and runtime and
+(tag v2.11.9). Caddy is a Go program: the binary contains the Go standard library and runtime and
 the Go modules listed in section 2 under "Go modules in /usr/local/bin/caddy", at the versions
 \`caddy build-info\` prints from it. Their license, NOTICE and patent files are in sections 4 and
 5 and the license texts in section 6; the source code of each module at that version is at the
 address listed with it.`,
   },
-  nodeRuntime('24.13.0', '24.13.0', '/usr/local/bin/node (from the node:24.13.0-bookworm-slim image)', ''),
+  nodeRuntime('24.22.3', '24.22.3', '/usr/local/bin/node (from the node:24.22.3-bookworm-slim image)', ''),
   {
     title: 'supervisor and gosu',
     version: 'supervisor 4.3.0, gosu 1.19 (Ubuntu packages)',
@@ -721,12 +721,12 @@ license; gosu: Apache 2.0) are in /usr/share/doc/supervisor/copyright and
 
 const UBI9_SOURCE = {
   components: [
-    'OpenJDK 25.0.5, the Red Hat build in package java-25-openjdk 25.0.5.0.8-1.0.el9 (GPL-2.0 with\n    the Classpath Exception)',
+    'OpenJDK 25.0.5.1, the Red Hat build in package java-25-openjdk 25.0.5.1.2-1.1.el9 (GPL-2.0 with\n    the Classpath Exception)',
     'the operating system packages of the base image licensed under the GPL or the LGPL; list them\n    with: rpm -qa --qf \'%{NAME} %{VERSION}-%{RELEASE}: %{LICENSE}\\n\'',
   ],
   locations: [
     `Base image: ${baseImage('registry.access.redhat.com/ubi9/openjdk-25-runtime')}`,
-    'OpenJDK: https://github.com/openjdk/jdk25u (tag jdk-25.0.5+8), from which Red Hat builds the\n    source RPM java-25-openjdk-25.0.5.0.8-1.0.el9.src.rpm',
+    'OpenJDK: https://github.com/openjdk/jdk25u (tag jdk-25.0.5.1+2), from which Red Hat builds the\n    source RPM java-25-openjdk-25.0.5.1.2-1.1.el9.src.rpm',
     'Base image packages: the UBI 9 source repositories,\n    https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/<arch>/{baseos,appstream}/source/SRPMS/\n    (their metadata lists only the current build of each package; the builds in this image are\n    in the published source above)',
   ],
 };
@@ -761,13 +761,13 @@ function allInOneSource(libvips) {
   return {
     libvips: true,
     components: [
-      'Eclipse Temurin OpenJDK 25.0.5+8 JRE (GPL-2.0 with the Classpath Exception)',
+      'Eclipse Temurin OpenJDK 25.0.5.1+2 JRE (GPL-2.0 with the Classpath Exception)',
       'the Ubuntu packages in the image licensed under the GPL or the LGPL; list them with:\n    dpkg-query -W -f \'${source:Package} ${source:Version}\\n\' and see /usr/share/doc/<package>/copyright',
       vips.component,
     ],
     locations: [
       `Base image: ${baseImage('eclipse-temurin')}, Ubuntu 26.04 LTS`,
-      'Temurin JRE: https://github.com/adoptium/jdk25u (tag jdk-25.0.5+8_adopt), from OpenJDK\n    https://github.com/openjdk/jdk25u (tag jdk-25.0.5+8)',
+      'Temurin JRE: https://github.com/adoptium/jdk25u (tag jdk-25.0.5.1+2_adopt), from OpenJDK\n    https://github.com/openjdk/jdk25u (tag jdk-25.0.5.1+2)',
       'Ubuntu packages: the Ubuntu 26.04 LTS source packages, https://launchpad.net/ubuntu/+source/<package>\n    (apt-get source <package>=<version>)',
       vips.location,
     ],

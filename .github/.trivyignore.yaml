@@ -24,7 +24,14 @@
 #         - "apps/server/pom.xml"
 #       expired_at: 2026-12-31
 #       statement: "@chenna-certping: only reachable through the XML parser, which CertPing does not enable. Fixed upstream in x.y.z, upgrade tracked in #123."
-vulnerabilities: []
+vulnerabilities:
+  - id: CVE-2026-78661
+    paths:
+      - "usr/local/bin/caddy"
+    purls:
+      - "pkg:golang/golang.org/x/net@v0.60.0"
+    expired_at: 2027-01-26
+    statement: "@izaan-seaionl: quadratic-time parsing in golang.org/x/net/html, in Caddy 2.11.9 (the latest release on 2026-11-27) in the all-in-one image. The only module in the binary that imports the parser is github.com/smallstep/cli-utils (usage/report.go, command-line help output); no Caddy HTTP module does, so no request reaches it. Fixed in x/net 0.62.0: drop this entry when a Caddy release ships it."
 misconfigurations:
   - id: DS-0002
     paths:
