@@ -17,6 +17,7 @@ import java.net.URI;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import com.certmanagement.utils.RequestContextLogger;
 import com.certmanagement.interceptor.RequestContextInterceptor;
 import org.slf4j.Logger;
@@ -30,6 +31,7 @@ public class ProxyService {
 
     private final RestTemplate restTemplate;
     private final String notificationServiceBaseUrl;
+    private final String notificationServiceHost;
     private final String internalToken;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -39,6 +41,7 @@ public class ProxyService {
             @Value("${certping.transport.internal-token:}") String internalToken) {
         this.restTemplate = restTemplate;
         this.notificationServiceBaseUrl = notificationServiceBaseUrl;
+        this.notificationServiceHost = URI.create(notificationServiceBaseUrl).getHost();
         this.internalToken = internalToken == null ? "" : internalToken.trim();
     }
 
@@ -113,8 +116,9 @@ public class ProxyService {
     // ===== Gateway Context Enrichment =====
 
     /**
-     * Enrich query parameters with userId, organizationId, and requestId from the gateway context.
-     * Values from JWT always override any user-supplied values (prevents spoofing).
+     * Enrich query parameters with userId and organizationId from the gateway context.
+     * Values from JWT always override any user-supplied values (prevents spoofing). Request and
+     * correlation IDs travel as headers ({@link #createHeaders()}), never in the URL.
      */
     public Map<String, String> enrichQueryParams(Map<String, String> queryParams) {
         if (!GatewayRequestContext.isPresent()) {
@@ -126,9 +130,6 @@ public class ProxyService {
 
         Integer userId = GatewayRequestContext.getUserId();
         String organizationId = GatewayRequestContext.getOrganizationId();
-        String requestId = GatewayRequestContext.getRequestId();
-        String email = GatewayRequestContext.getEmail();
-        String correlationId = GatewayRequestContext.getCorrelationId();
 
         if (userId != null) {
             enriched.put("userId", String.valueOf(userId));
@@ -136,18 +137,8 @@ public class ProxyService {
         if (organizationId != null) {
             enriched.put("organizationId", organizationId);
         }
-        if (requestId != null) {
-            enriched.put("requestId", requestId);
-        }
-        if (email != null) {
-            enriched.put("email", email);
-        }
-        if (correlationId != null) {
-            enriched.put("correlationId", correlationId);
-        }
 
-        contextLogger().debug("Enriched query params with userId={}, organizationId={}, requestId={}, correlationId={}",
-                userId, organizationId, requestId, correlationId);
+        contextLogger().debug("Enriched query params with userId={}, organizationId={}", userId, organizationId);
         return enriched;
     }
 
@@ -162,7 +153,10 @@ public class ProxyService {
             });
         }
         // Encoded as values, so a parameter can never add another one (such as organizationId).
-        URI target = uri.encode().build().toUri();
+        URI target = uri.build().encode().toUri();
+        if (!Objects.equals(target.getHost(), notificationServiceHost)) {
+            throw new IllegalStateException("Notifier request left the configured host");
+        }
         contextLogger().info("Proxying GET request to path={}", path);
 
         try {

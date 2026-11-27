@@ -74,9 +74,7 @@ class ProxyServiceTest {
         Map<String, String> out = service.enrichQueryParams(null);
         assertThat(out.get("userId")).isEqualTo("7");
         assertThat(out.get("organizationId")).isEqualTo("org-9");
-        assertThat(out.get("requestId")).isEqualTo("req-1");
-        assertThat(out.get("email")).isEqualTo("u@x.io");
-        assertThat(out.get("correlationId")).isEqualTo("corr-2");
+        assertThat(out).doesNotContainKeys("requestId", "email", "correlationId");
     }
 
     @Test
@@ -105,6 +103,15 @@ class ProxyServiceTest {
         var params = UriComponentsBuilder.fromUri(requested()).build(true).getQueryParams();
         assertThat(params.get("organizationId")).containsExactly("org-9");
         assertThat(params.getFirst("status")).isEqualTo("SENT%26organizationId%3Dother%23x");
+    }
+
+    @Test
+    void get_aValueWithTemplateBracesIsEncoded() {
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("[]"));
+
+        assertThat(service.get("/g", Map.of("status", "{x}")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(requested().getRawQuery()).isEqualTo("status=%7Bx%7D");
     }
 
     @Test
