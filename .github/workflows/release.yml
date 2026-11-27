@@ -335,7 +335,11 @@ jobs:
   publish:
     name: Publish ${{ matrix.app }}
     needs: [validate, sbom, build]
-    if: inputs.publish_images
+    # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
+    # would skip this job because of any skipped job upstream.
+    if: >-
+      always() && inputs.publish_images &&
+      needs.sbom.result == 'success' && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -417,7 +421,9 @@ jobs:
     # layers. Only when images are published: without a push there is nothing to assemble from.
     # Its own steps are package installs on Ubuntu, so the arm64 half runs under QEMU.
     needs: [validate, publish]
-    if: inputs.publish_images
+    # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
+    # would skip this job because of any skipped job upstream.
+    if: always() && inputs.publish_images && needs.publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -532,7 +538,11 @@ jobs:
     # repository their signatures and attestations too. Runs only when the DOCKERHUB_NAMESPACE
     # variable and the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets are set (.github/RELEASING.md).
     needs: [validate, publish, all-in-one]
-    if: inputs.publish_images && vars.DOCKERHUB_NAMESPACE != ''
+    # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
+    # would skip this job because of any skipped job upstream.
+    if: >-
+      always() && inputs.publish_images && vars.DOCKERHUB_NAMESPACE != '' &&
+      needs.publish.result == 'success' && needs.all-in-one.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -590,7 +600,11 @@ jobs:
     # is the chart's appVersion, so a chart points at the images of the same release:
     # helm install certping oci://ghcr.io/certping-labs/charts/certping --version <version>
     needs: [validate, publish, all-in-one]
-    if: inputs.publish_images
+    # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
+    # would skip this job because of any skipped job upstream.
+    if: >-
+      always() && inputs.publish_images &&
+      needs.publish.result == 'success' && needs.all-in-one.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -622,11 +636,13 @@ jobs:
     name: Sign artifacts and draft the release
     needs: [validate, sbom, build, publish, all-in-one]
     # publish and all-in-one are skipped on a dry run (publish_images off); the draft still
-    # runs then and says that no images were pushed.
+    # runs then and says that no images were pushed. When images were requested, both must have
+    # succeeded, so a draft never lists empty image digests.
     if: >-
       always() && needs.sbom.result == 'success' && needs.build.result == 'success' &&
-      (needs.publish.result == 'success' || needs.publish.result == 'skipped') &&
-      (needs.all-in-one.result == 'success' || needs.all-in-one.result == 'skipped')
+      (inputs.publish_images
+        && needs.publish.result == 'success' && needs.all-in-one.result == 'success'
+        || !inputs.publish_images)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
