@@ -668,7 +668,7 @@ jobs:
           echo "66fb0ad7206f3f6fa77ed5b552049d364ccf4b50b1684554f731f76302b52ca0  oras.tgz" | sha256sum -c -
           tar -xzf oras.tgz oras
       - name: Collect the source
-        run: .github/scripts/image-source.sh --libvips source scan/trivy-*.json
+        run: .github/scripts/image-source.sh --libvips --temurin source scan/trivy-*.json
       - name: Push the source
         env:
           VERSION: ${{ needs.validate.outputs.image_tag }}

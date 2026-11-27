@@ -4,9 +4,10 @@
 
 # Collects the corresponding source of the operating system packages and libraries in one release
 # image. The Release workflow publishes it next to the image as
-# ghcr.io/certping-labs/<image>-source:<version> (GPL-3.0 section 6(d), LGPL-3.0 section 4).
+# ghcr.io/certping-labs/<image>-source:<version> (GPL-3.0 section 6(d), LGPL-3.0 section 4,
+# GPL-2.0 section 3).
 #
-#   image-source.sh [--libvips] <out-dir> <trivy report>...
+#   image-source.sh [--libvips] [--temurin] <out-dir> <trivy report>...
 #
 # The trivy reports (image-scan.sh, one per platform) list every operating system package in the
 # image with its source package; the source of every one of them is collected, whatever its
@@ -23,16 +24,24 @@
 #                 copies in patches/ beside it), checked by SHA-256,
 #                 and librsvg-<version>-crates.tar with the crates.io crates of librsvg's
 #                 Cargo.lock, each checked against the lockfile.
+#   temurin/      with --temurin (the image is built on eclipse-temurin): the source archive of
+#                 its Temurin JDK release, as JAVA_VERSION in the image configuration names it,
+#                 from licenses/components/temurin/sources.txt, checked by SHA-256.
 #   SOURCES.txt   one line per file: SHA-256, path, and where it came from.
 set -euo pipefail
 
 libvips=0
-if [[ "${1:-}" == "--libvips" ]]; then
-  libvips=1
+temurin=0
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --libvips) libvips=1 ;;
+    --temurin) temurin=1 ;;
+    *) echo "unknown option $1" >&2; exit 2 ;;
+  esac
   shift
-fi
+done
 if [[ $# -lt 2 ]]; then
-  echo "usage: $0 [--libvips] <out-dir> <trivy report>..." >&2
+  echo "usage: $0 [--libvips] [--temurin] <out-dir> <trivy report>..." >&2
   exit 2
 fi
 out="$1"
@@ -160,6 +169,27 @@ case "$family" in
     fail "no source collection for operating system family '$family'"
     ;;
 esac
+
+# Eclipse Temurin images name their JDK release in JAVA_VERSION (jdk-<version>); the UBI OpenJDK
+# images set JAVA_VERSION to the major version only and are covered by their source RPMs.
+java_version="$(jq -r '.Metadata.ImageConfig.config.Env[]? | select(startswith("JAVA_VERSION=jdk-")) | ltrimstr("JAVA_VERSION=")' \
+  "${reports[@]}" | sort -u)"
+if [[ "$temurin" == 0 ]]; then
+  [[ -z "$java_version" ]] || fail "the image contains Temurin $java_version: collect its source with --temurin"
+else
+  [[ -n "$java_version" && "$java_version" != *$'\n'* ]] \
+    || fail "--temurin: expected one JAVA_VERSION=jdk-... in the reports, found: ${java_version:-none}"
+  grep -qF "Eclipse Temurin OpenJDK ${java_version#jdk-} JRE" "$root/licenses/all-in-one/THIRD-PARTY-NOTICES.txt" \
+    || fail "the all-in-one notices name another Temurin release than $java_version: update TEMURIN_VERSION in .github/scripts/third-party-notices.mjs"
+  list="$root/licenses/components/temurin/sources.txt"
+  read -r _ file sum url < <(awk -v v="$java_version" '!/^#/ && $1 == v' "$list") \
+    || fail "no source archive for Temurin $java_version in ${list#"$root"/}"
+  mkdir -p "$out/temurin"
+  "${curl[@]}" -o "$out/temurin/$file" "$url"
+  echo "$sum  $out/temurin/$file" | sha256sum -c --quiet - || fail "$file does not match its SHA-256 in ${list#"$root"/}"
+  record "temurin/$file" "$url"
+  echo "Collected the source of Temurin $java_version"
+fi
 
 sharp_libvips="$(jq -r '.Results[]? | select(.Class == "lang-pkgs") | .Packages[]?
   | select(.Name | test("^@img/sharp-libvips-linux(musl)?-")) | .Version' "${reports[@]}" | sort -u)"

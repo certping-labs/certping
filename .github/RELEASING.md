@@ -245,7 +245,8 @@ The images contain software under the GPL and the LGPL: GPL-3.0 userland
 (bash, coreutils, grep, sed, tar and others), LGPL libraries, OpenJDK (GPL-2.0
 with the Classpath Exception) and libvips (LGPL, used under LGPL-3.0 through
 sharp). Distributing them from a registry needs their corresponding source
-available from a designated place (GPL-3.0 section 6(d), LGPL-3.0 section 4).
+available from a designated place (GPL-3.0 section 6(d), LGPL-3.0 section 4,
+GPL-2.0 section 3).
 Each release publishes it next to each image:
 
 | Image | Source |
@@ -272,11 +273,15 @@ Each is an OCI artifact in GHCR (`oras pull` restores the files) holding:
   copies in `patches/` beside `sources.txt`, because their hosts generate them
   on request. If a downloaded archive no longer matches its SHA-256, the
   release stops: check what changed upstream before updating the line.
+- `temurin/` (all-in-one): the source archive Adoptium publishes for the
+  Eclipse Temurin release in the image (GPL-2.0 with the Classpath
+  Exception), made from the tag `jdk-<version>_adopt` of
+  `adoptium/jdk25u`. The release is the image's `JAVA_VERSION`; the archive
+  and its SHA-256 come from `licenses/components/temurin/sources.txt`, and the
+  release stops if that file has no line for it, the download does not
+  match, or the all-in-one notices name another Temurin release
+  (`TEMURIN_VERSION`).
 - `SOURCES.txt`: every file with its SHA-256 and where it came from.
-
-The all-in-one's Eclipse Temurin JRE (GPL-2.0 with the Classpath Exception)
-is not an Ubuntu package, so `certping-source` does not hold it. The written
-offer and the upstream tag in section 7 of the image's notices cover it.
 
 Retention: never delete a `-source` package version while the image version
 it belongs to is available, and keep it for at least three years after that
@@ -302,7 +307,14 @@ to date" check fails until a maintainer updates them on that pull request:
    docker run --rm --entrypoint sh eclipse-temurin@sha256:<digest> -c 'java -version; . /etc/os-release; echo $VERSION'
    ```
 3. Update the tag and digest in `BASE_IMAGES` and every version and source
-   location read from that image in `third-party-notices.mjs`.
+   location read from that image in `third-party-notices.mjs`. When the
+   eclipse-temurin image moves to another Temurin release, set
+   `TEMURIN_VERSION` there and add the release's source archive to
+   `licenses/components/temurin/sources.txt`: the
+   `OpenJDK25U-jdk-sources_<version>.tar.gz` asset (`+` in the version
+   written as `_`, for example `OpenJDK25U-jdk-sources_25.0.5.1_2.tar.gz`) of the matching
+   `adoptium/temurin25-binaries` release, with the SHA-256 that the release
+   publishes beside it (`.sha256.txt`), checked against the downloaded file.
 4. Run `.github/scripts/third-party-notices.sh`, then commit with a sign-off
    (`git commit -s`) and push.
 

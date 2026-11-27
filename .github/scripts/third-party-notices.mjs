@@ -470,6 +470,16 @@ for (const b of BASE_IMAGES) {
   }
 }
 
+// The Temurin release in the eclipse-temurin base image (JAVA_VERSION=jdk-<version> in its
+// configuration). The Release workflow publishes its source from licenses/components/temurin/sources.txt.
+const TEMURIN_VERSION = '25.0.5.1+2';
+const TEMURIN_SOURCE = (() => {
+  const file = path.join(COMPONENTS, 'temurin', 'sources.txt');
+  const line = readText(file).split('\n').find((l) => l.split(/\s+/)[0] === `jdk-${TEMURIN_VERSION}`);
+  if (!line) fail(`${path.relative(ROOT, file)} has no source archive for jdk-${TEMURIN_VERSION}`);
+  return line.split(/\s+/)[3];
+})();
+
 function baseImage(image) {
   const b = BASE_IMAGES.find((x) => x.image === image);
   return `${b.image}:${b.tag} (${b.digest})`;
@@ -666,7 +676,7 @@ image. Source code: see section 7.`,
   },
   {
     title: 'Eclipse Temurin OpenJDK 25 JRE',
-    version: '25.0.5.1+2',
+    version: TEMURIN_VERSION,
     licenses: ['GPL-2.0-only WITH Classpath-exception-2.0'],
     where: '/opt/java/openjdk',
     body: `The Java runtime of the server, agent and notifier. CertPing runs on it and does not modify it; the
@@ -760,14 +770,15 @@ function allInOneSource(libvips) {
   const vips = libvipsSource(libvips);
   return {
     libvips: true,
+    temurin: true,
     components: [
-      'Eclipse Temurin OpenJDK 25.0.5.1+2 JRE (GPL-2.0 with the Classpath Exception)',
+      `Eclipse Temurin OpenJDK ${TEMURIN_VERSION} JRE (GPL-2.0 with the Classpath Exception)`,
       'the Ubuntu packages in the image licensed under the GPL or the LGPL; list them with:\n    dpkg-query -W -f \'${source:Package} ${source:Version}\\n\' and see /usr/share/doc/<package>/copyright',
       vips.component,
     ],
     locations: [
       `Base image: ${baseImage('eclipse-temurin')}, Ubuntu 26.04 LTS`,
-      'Temurin JRE: https://github.com/adoptium/jdk25u (tag jdk-25.0.5.1+2_adopt), from OpenJDK\n    https://github.com/openjdk/jdk25u (tag jdk-25.0.5.1+2)',
+      `Temurin JRE: https://github.com/adoptium/jdk25u (tag jdk-${TEMURIN_VERSION}_adopt), from OpenJDK\n    https://github.com/openjdk/jdk25u (tag jdk-${TEMURIN_VERSION}); Adoptium's source archive of the\n    release: ${TEMURIN_SOURCE}`,
       'Ubuntu packages: the Ubuntu 26.04 LTS source packages, https://launchpad.net/ubuntu/+source/<package>\n    (apt-get source <package>=<version>)',
       vips.location,
     ],
@@ -776,13 +787,18 @@ function allInOneSource(libvips) {
 
 function sourceSection(source, image) {
   const list = (items) => items.map((i) => `  - ${i}`).join('\n');
+  const extras = [
+    source.temurin && 'the source archive of the Eclipse Temurin JRE release it contains',
+    source.libvips && 'the source archives, patches and build scripts of libvips and the libraries bundled in it,\nwith the Rust crates of librsvg',
+  ].filter(Boolean);
+  const published = extras.map((e, i) => `,\n${i === extras.length - 1 ? 'and ' : ''}${e}`).join('');
   return `Some components of this image are licensed under a version of the GNU General Public License
 (GPL) or the GNU Lesser General Public License (LGPL):
 
 ${list(source.components)}
 
 Published source: each release publishes, next to the image in the same registry, the source
-packages of every operating system package in the image at the exact versions it contains${source.libvips ? ',\nand the source archives, patches and build scripts of libvips and the libraries bundled in it,\nwith the Rust crates of librsvg' : ''}:
+packages of every operating system package in the image at the exact versions it contains${published}:
 
     ghcr.io/certping-labs/${image}-source:<version>
 

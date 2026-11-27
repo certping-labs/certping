@@ -22131,6 +22131,7 @@ Some components of this image are licensed under a version of the GNU General Pu
 
 Published source: each release publishes, next to the image in the same registry, the source
 packages of every operating system package in the image at the exact versions it contains,
+the source archive of the Eclipse Temurin JRE release it contains,
 and the source archives, patches and build scripts of libvips and the libraries bundled in it,
 with the Rust crates of librsvg:
 
@@ -22155,7 +22156,8 @@ Where upstream publishes the source:
 
   - Base image: eclipse-temurin:25-jre (sha256:4ed132f6832e9804b123e89a849a7b4502756ae64a4ee08ebab939d9d5d0a9fa), Ubuntu 26.04 LTS
   - Temurin JRE: https://github.com/adoptium/jdk25u (tag jdk-25.0.5.1+2_adopt), from OpenJDK
-    https://github.com/openjdk/jdk25u (tag jdk-25.0.5.1+2)
+    https://github.com/openjdk/jdk25u (tag jdk-25.0.5.1+2); Adoptium's source archive of the
+    release: https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5.1%2B2/OpenJDK25U-jdk-sources_25.0.5.1_2.tar.gz
   - Ubuntu packages: the Ubuntu 26.04 LTS source packages, https://launchpad.net/ubuntu/+source/<package>
     (apt-get source <package>=<version>)
   - libvips and its bundled libraries: https://github.com/libvips/libvips (tag v8.18.7),
