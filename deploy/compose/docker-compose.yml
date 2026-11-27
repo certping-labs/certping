@@ -203,7 +203,7 @@ services:
   postgres:
     # postgres:16.4-alpine, pinned by digest, the same image as the Helm chart. A new major
     # version needs a data upgrade (pg_upgrade) and, from 18 on, a different volume path.
-    image: postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c
+    image: postgres:16.15-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     restart: unless-stopped
     environment:
       POSTGRES_DB: certping
