@@ -11,6 +11,7 @@ no guaranteed response time.
 | Report a bug or request a feature | [GitHub issues](https://github.com/certping-labs/certping/issues) |
 | Get help with something that cannot be public | `support@certping.com` |
 | Get paid support, an enterprise plan or managed cloud | [Paid options](#paid-options) |
+| Report a code of conduct violation | `conduct@certping.com`. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). |
 | Report a security vulnerability | `security@certping.com` or [GitHub private vulnerability reporting](https://github.com/certping-labs/certping/security/advisories/new). Never a public issue. See [SECURITY.md](SECURITY.md). |
 
 Before you ask, check the [documentation](README.md#documentation) and the

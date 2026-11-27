@@ -17,7 +17,7 @@ RUN mvn clean package -DskipTests -q
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 # Same hardened runtime as the server and notifier: Red Hat UBI 9 OpenJDK 25, pinned by digest,
 # running as uid 185 with the package manager removed.
-FROM registry.access.redhat.com/ubi9/openjdk-25-runtime@sha256:2ddacad5332f4e481353668f210623f7e7420f1561515f5686e5abd33cd6d38f AS runtime
+FROM registry.access.redhat.com/ubi9/openjdk-25-runtime@sha256:1db3895f42eecbabea53523a25da537901b7ce599c404e179c5e6e4cdf1cedef AS runtime
 WORKDIR /app
 
 USER 0

@@ -47,21 +47,28 @@ reviews and publishes by hand.
    - builds each of the four application images on a native runner per
      platform (`ubuntu-24.04` for `linux/amd64`, `ubuntu-24.04-arm` for
      `linux/arm64`), with OCI labels (source, revision, version). When
-     publishing, each platform image is pushed by digest and the two are
-     joined into one tagged multi-platform manifest,
-     `ghcr.io/certping-labs/certping-<app>:<version>`;
+     publishing, each platform image is pushed by digest only;
    - when publishing, scans each platform image by digest with trivy before
      it is tagged (`.github/scripts/image-scan.sh`): operating system packages
      and application dependencies, fixable HIGH and CRITICAL findings, with
      the settings, exceptions and blocking or report-only mode of the Security
      workflow (`.github/trivy.yaml`, `.github/.trivyignore.yaml`). In blocking
      mode an open finding stops the release before anything is tagged;
-   - when publishing, collects the corresponding source of each image and
-     pushes it next to the image as `ghcr.io/certping-labs/<image>-source:<version>`
-     before the image is tagged (see "Corresponding source" below);
-   - when publishing, builds the all-in-one image `ghcr.io/certping-labs/certping:<version>`
-     from those four images by digest (its arm64 half runs under QEMU), and
-     scans it and publishes its source the same way before tagging it;
+   - when publishing, joins the two scanned platform images of each app into
+     one multi-platform manifest list, pushed by digest without a tag, and
+     builds the all-in-one image from those four manifest lists by digest (its
+     arm64 half runs under QEMU), pushes it by digest and scans it the same way;
+   - only once all five images passed their scans, collects the corresponding
+     source of each image and pushes it next to the image as
+     `ghcr.io/certping-labs/<image>-source:<version>` (see "Corresponding
+     source" below). A failed scan therefore leaves no tagged image and no
+     source package, only untagged digests (delete them by hand if wanted).
+     A failed source or tagging step can leave some `-source` packages,
+     which the next run of the same version overwrites;
+   - once every source is published, tags the images,
+     `ghcr.io/certping-labs/certping-<app>:<version>` and
+     `ghcr.io/certping-labs/certping:<version>`, each at the digest that was
+     scanned, then signs and attests them (below);
    - packages the self-hosting kits: `certping-compose-<version>.zip` (the
      Compose kit with the images pinned to the release, by digest when
      published) and the two Helm charts as `.tgz` with LICENSE and NOTICE;
@@ -245,7 +252,8 @@ The images contain software under the GPL and the LGPL: GPL-3.0 userland
 (bash, coreutils, grep, sed, tar and others), LGPL libraries, OpenJDK (GPL-2.0
 with the Classpath Exception) and libvips (LGPL, used under LGPL-3.0 through
 sharp). Distributing them from a registry needs their corresponding source
-available from a designated place (GPL-3.0 section 6(d), LGPL-3.0 section 4).
+available from a designated place (GPL-3.0 section 6(d), LGPL-3.0 section 4,
+GPL-2.0 section 3).
 Each release publishes it next to each image:
 
 | Image | Source |
@@ -272,11 +280,15 @@ Each is an OCI artifact in GHCR (`oras pull` restores the files) holding:
   copies in `patches/` beside `sources.txt`, because their hosts generate them
   on request. If a downloaded archive no longer matches its SHA-256, the
   release stops: check what changed upstream before updating the line.
+- `temurin/` (all-in-one): the source archive Adoptium publishes for the
+  Eclipse Temurin release in the image (GPL-2.0 with the Classpath
+  Exception), made from the tag `jdk-<version>_adopt` of
+  `adoptium/jdk25u`. The release is the image's `JAVA_VERSION`; the archive
+  and its SHA-256 come from `licenses/components/temurin/sources.txt`, and the
+  release stops if that file has no line for it, the download does not
+  match, or the all-in-one notices name another Temurin release
+  (`TEMURIN_VERSION`).
 - `SOURCES.txt`: every file with its SHA-256 and where it came from.
-
-The all-in-one's Eclipse Temurin JRE (GPL-2.0 with the Classpath Exception)
-is not an Ubuntu package, so `certping-source` does not hold it. The written
-offer and the upstream tag in section 7 of the image's notices cover it.
 
 Retention: never delete a `-source` package version while the image version
 it belongs to is available, and keep it for at least three years after that
@@ -302,7 +314,19 @@ to date" check fails until a maintainer updates them on that pull request:
    docker run --rm --entrypoint sh eclipse-temurin@sha256:<digest> -c 'java -version; . /etc/os-release; echo $VERSION'
    ```
 3. Update the tag and digest in `BASE_IMAGES` and every version and source
-   location read from that image in `third-party-notices.mjs`.
+   location read from that image in `third-party-notices.mjs`. When the
+   eclipse-temurin image moves to another Temurin release, set
+   `TEMURIN_VERSION` there and add the release's source archive to
+   `licenses/components/temurin/sources.txt`: the
+   `OpenJDK25U-jdk-sources_<version>.tar.gz` asset (`+` in the version
+   written as `_`, for example `OpenJDK25U-jdk-sources_25.0.5.1_2.tar.gz`) of the matching
+   `adoptium/temurin25-binaries` release, with the SHA-256 that the release
+   publishes beside it (`.sha256.txt`), checked against the downloaded file.
+   The all-in-one builds Caddy in the `caddy:<version>-builder` image with
+   `xcaddy`, replacing `golang.org/x/net` with a fixed version. When Caddy is
+   updated, change the version in `xcaddy build`, drop the replacement once
+   the new Caddy requires that version or later, and collect
+   `licenses/components/caddy-<version>/` again from the new binary.
 4. Run `.github/scripts/third-party-notices.sh`, then commit with a sign-off
    (`git commit -s`) and push.
 

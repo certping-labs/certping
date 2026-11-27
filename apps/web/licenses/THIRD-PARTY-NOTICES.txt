@@ -11400,9 +11400,9 @@ information.
 
 Where upstream publishes the source:
 
-  - Base image: registry.access.redhat.com/ubi10/nodejs-24:10.3-1795423475 (sha256:f4748b252f0f7353e0f617625ebcba5768e847dde6aaa4b116ac6e2a954c54b0)
+  - Base image: registry.access.redhat.com/ubi10/nodejs-24:10.3-1795479553 (sha256:228c8675a62feb55f88dc9dee94d5a82e6f0e887ec47bd8f5e524a797a0984d7)
   - Base image packages: the source RPMs of the image, published as the source image
-    registry.access.redhat.com/ubi10/nodejs-24:10.3-1795423475-source
+    registry.access.redhat.com/ubi10/nodejs-24:10.3-1795479553-source
   - libvips and its bundled libraries: https://github.com/libvips/libvips (tag v8.18.7),
     and the build scripts and patches of https://github.com/lovell/sharp-libvips (tag v1.3.4),
     which name the source archive of each bundled library

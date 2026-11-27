@@ -16,7 +16,7 @@ licensed under the GPL or the LGPL is published, and offers it in writing.
 
 ----------------------------------------------------------------------------------------------------
 Red Hat build of OpenJDK 25 on Red Hat Universal Base Image 9 (base image)
-  Version: 25.0.5 (package java-25-openjdk 25.0.5.0.8-1.0.el9)
+  Version: 25.0.5.1 (package java-25-openjdk 25.0.5.1.2-1.1.el9)
   License: GPL-2.0-only WITH Classpath-exception-2.0
   Location: registry.access.redhat.com/ubi9/openjdk-25-runtime
 
@@ -5258,7 +5258,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 Some components of this image are licensed under a version of the GNU General Public License
 (GPL) or the GNU Lesser General Public License (LGPL):
 
-  - OpenJDK 25.0.5, the Red Hat build in package java-25-openjdk 25.0.5.0.8-1.0.el9 (GPL-2.0 with
+  - OpenJDK 25.0.5.1, the Red Hat build in package java-25-openjdk 25.0.5.1.2-1.1.el9 (GPL-2.0 with
     the Classpath Exception)
   - the operating system packages of the base image licensed under the GPL or the LGPL; list them
     with: rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}: %{LICENSE}\n'
@@ -5285,9 +5285,9 @@ information.
 
 Where upstream publishes the source:
 
-  - Base image: registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24-3.1793323806 (sha256:2ddacad5332f4e481353668f210623f7e7420f1561515f5686e5abd33cd6d38f)
-  - OpenJDK: https://github.com/openjdk/jdk25u (tag jdk-25.0.5+8), from which Red Hat builds the
-    source RPM java-25-openjdk-25.0.5.0.8-1.0.el9.src.rpm
+  - Base image: registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24-5.1795165358 (sha256:1db3895f42eecbabea53523a25da537901b7ce599c404e179c5e6e4cdf1cedef)
+  - OpenJDK: https://github.com/openjdk/jdk25u (tag jdk-25.0.5.1+2), from which Red Hat builds the
+    source RPM java-25-openjdk-25.0.5.1.2-1.1.el9.src.rpm
   - Base image packages: the UBI 9 source repositories,
     https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/<arch>/{baseos,appstream}/source/SRPMS/
     (their metadata lists only the current build of each package; the builds in this image are

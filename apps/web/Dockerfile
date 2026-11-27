@@ -1,7 +1,7 @@
 # Copyright Seaionl Inc. and CertPing contributors
 # SPDX-License-Identifier: Apache-2.0
 
-ARG NODE_BUILD_IMAGE=node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f
+ARG NODE_BUILD_IMAGE=node:24.22.3-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530
 
 FROM ${NODE_BUILD_IMAGE} AS base
 WORKDIR /app
@@ -66,7 +66,7 @@ RUN set -eux; \
 # Hardened runtime (UBI):
 # - Uses Red Hat UBI Node.js 24 image that is redistributable for enterprise delivery.
 # - Pin to scanned digest for reproducibility/compliance traceability.
-FROM registry.access.redhat.com/ubi10/nodejs-24@sha256:f4748b252f0f7353e0f617625ebcba5768e847dde6aaa4b116ac6e2a954c54b0 AS runner
+FROM registry.access.redhat.com/ubi10/nodejs-24@sha256:228c8675a62feb55f88dc9dee94d5a82e6f0e887ec47bd8f5e524a797a0984d7 AS runner
 WORKDIR /app
 
 # Remove SSH client tooling from the runtime image to reduce attack surface.

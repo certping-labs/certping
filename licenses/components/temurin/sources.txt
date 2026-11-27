@@ -1,0 +1,8 @@
+# The source of the Eclipse Temurin JRE in the all-in-one image: the source archive Adoptium
+# publishes with each Temurin release, made from the tag jdk-<version>_adopt of
+# https://github.com/adoptium/jdk25u. The Release workflow picks the line for the JAVA_VERSION of
+# the image, downloads the archive, checks its SHA-256 and publishes it with the corresponding
+# source of the all-in-one image (.github/scripts/image-source.sh --temurin). Add a line whenever
+# the eclipse-temurin base image moves to another Temurin release. Format: <JAVA_VERSION>
+# <file name> <sha256> <url>
+jdk-25.0.5.1+2 OpenJDK25U-jdk-sources_25.0.5.1_2.tar.gz 3fb4af3a690f6c0f47462f3f813a8f09dc4a237f0c6ab462a764f15bc15313a7 https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5.1%2B2/OpenJDK25U-jdk-sources_25.0.5.1_2.tar.gz

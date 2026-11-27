@@ -18,7 +18,8 @@ Every CertPing image carries these files in `/licenses/certping/`:
 | `texts/` | Full license texts, from the SPDX license list (EDL-1.0 from eclipse.org, the PostgreSQL License from PostgreSQL, GPL-2.0 with the Classpath Exception from OpenJDK) |
 | `components/` | Texts for components that are not application dependencies: the Node.js license, the Valkey license, the font licenses and the OpenTelemetry Java agent's bundled notices |
 | `components/sharp-libvips-1.3.4/` | Per library bundled in libvips (`<library>-<version>`, as in the package's `versions.json`), its license and copyright files from its source at that version |
-| `components/caddy-2.8.4/` | `modules.txt` (what `caddy build-info` prints) and, per Go module and the Go toolchain, the license, NOTICE and patent files of its source at that version |
+| `components/temurin/sources.txt` | The source archive of each Eclipse Temurin release the all-in-one image has shipped, with its SHA-256; the Release workflow publishes the one in the image with the image's source |
+| `components/caddy-2.11.9/` | `modules.txt` (the modules `caddy build-info` prints, at the versions linked after replacements) and, per Go module and the Go toolchain, the license, NOTICE and patent files of its source at that version |
 | `../apps/<app>/licenses/` | Copies of `LICENSE`, `NOTICE` and the app's `THIRD-PARTY-NOTICES.txt` inside each app's Docker build context (generated) |
 
 Each app's Dockerfile copies `apps/<app>/licenses/` to `/licenses/certping/`; the all-in-one
@@ -49,7 +50,7 @@ The Caddy files come from the module source archives on proxy.golang.org at the 
 `modules.txt` (the Go toolchain's from github.com/golang/go at its release tag): every LICENSE,
 COPYING, NOTICE, COPYRIGHT and PATENTS file in the archive, except test data, packaging files
 and files for other operating systems. When the Caddy version changes, replace `modules.txt` with
-the new binary's `caddy build-info` and collect the files again; the generator fails if a module
+the new binary's `caddy build-info` (with the replaced versions) and collect the files again; the generator fails if a module
 has none.
 
 The libvips files come from the source tarballs that sharp-libvips' `build/posix.sh` downloads

@@ -31,7 +31,7 @@ while IFS= read -r f; do files+=("$f"); done < <(find . -type f ! -path ./SOURCE
 "$oras" push "$ref" "${files[@]}" \
   --artifact-type application/vnd.certping.image-source.v1 \
   --annotation "org.opencontainers.image.title=$image-source" \
-  --annotation "org.opencontainers.image.description=Corresponding source of the operating system packages and libraries in $image:$VERSION" \
+  --annotation "org.opencontainers.image.description=Corresponding source of the operating system packages and GPL and LGPL components in $image:$VERSION" \
   --annotation "org.opencontainers.image.version=$VERSION" \
   --annotation "org.opencontainers.image.source=$REPO_URL"
 digest="$("$oras" manifest fetch --descriptor "$ref" | jq -r .digest)"
