@@ -24,6 +24,11 @@ updates:
     groups:
       web-minor-patch:
         update-types: [minor, patch]
+    # Major versions are upgraded by hand, with testing; Dependabot alerts still report every
+    # vulnerable dependency, including ones whose fix needs a major version.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message: { prefix: "chore(web)" }
 
   - package-ecosystem: maven
@@ -34,6 +39,11 @@ updates:
     groups:
       server-minor-patch:
         update-types: [minor, patch]
+    # Major versions are upgraded by hand, with testing; Dependabot alerts still report every
+    # vulnerable dependency, including ones whose fix needs a major version.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message: { prefix: "chore(server)" }
 
   - package-ecosystem: maven
@@ -44,6 +54,11 @@ updates:
     groups:
       agent-minor-patch:
         update-types: [minor, patch]
+    # Major versions are upgraded by hand, with testing; Dependabot alerts still report every
+    # vulnerable dependency, including ones whose fix needs a major version.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message: { prefix: "chore(agent)" }
 
   - package-ecosystem: maven
@@ -54,6 +69,11 @@ updates:
     groups:
       notifier-minor-patch:
         update-types: [minor, patch]
+    # Major versions are upgraded by hand, with testing; Dependabot alerts still report every
+    # vulnerable dependency, including ones whose fix needs a major version.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message: { prefix: "chore(notifier)" }
 
   - package-ecosystem: docker
