@@ -50,20 +50,28 @@ reviews and publishes by hand.
      publishing, each platform image is pushed by digest and the two are
      joined into one tagged multi-platform manifest,
      `ghcr.io/certping-labs/certping-<app>:<version>`;
+   - when publishing, scans each platform image by digest with trivy before
+     it is tagged (`.github/scripts/image-scan.sh`): operating system packages
+     and application dependencies, fixable HIGH and CRITICAL findings, with
+     the settings, exceptions and blocking or report-only mode of the Security
+     workflow (`.github/trivy.yaml`, `.github/.trivyignore.yaml`). In blocking
+     mode an open finding stops the release before anything is tagged;
    - when publishing, builds the all-in-one image `ghcr.io/certping-labs/certping:<version>`
-     from those four images by digest (its arm64 half runs under QEMU);
+     from those four images by digest (its arm64 half runs under QEMU), and
+     scans it the same way before tagging it;
    - when publishing, pushes both Helm charts at the release version to
      `oci://ghcr.io/certping-labs/charts`, and, once Docker Hub is set up,
      copies all five images unchanged (same digests) to
      `docker.io/<namespace>/certping` and `docker.io/<namespace>/certping-<app>`;
-   - writes a CycloneDX SBOM per image, a `release-metadata.json` and a
-     `SHA256SUMS` file;
+   - writes a CycloneDX SBOM per image, the image scan reports
+     (`trivy-<image>-linux-<arch>.json`), a `release-metadata.json` and a
+     `SHA256SUMS` file covering every attached file;
    - signs pushed images with cosign (keyless), attaches build provenance and
      SBOM attestations to them, signs `SHA256SUMS` with cosign, and attests
-     the SBOMs, metadata and checksums (public repository only);
+     every attached file (public repository only);
    - creates a draft release with generated notes, contributor credits, the
      image digests and a "Security scan status" section that says which scan
-     mode applied. No tag exists yet.
+     mode applied and what the image scan found. No tag exists yet.
 4. Edit the draft: fill in upgrade notes and breaking changes, check the
    generated notes and credits, and keep the scan status section as written.
    A dry-run draft (images not pushed) says so; delete it instead.
@@ -83,6 +91,7 @@ pull request flow below is followed by agreement rather than enforced.
 | Default token permissions | Settings, Actions, General, Workflow permissions | **Read repository contents and packages permissions**. Each job asks for what it needs. Leave "Allow GitHub Actions to create and approve pull requests" off. |
 | Branch ruleset for `main` | Settings, Rules, Rulesets | Require a pull request with 1 approval and review from code owners (`@certping-labs/certping`), dismiss approvals on new pushes, require conversations to be resolved, allow squash merges only, block force pushes and deletion, and require the status checks `ci-required` (it includes the DCO sign-off check), `Dependency review`, `Secret scan (gitleaks)` and `Dependency and config scan (trivy)`. |
 | GHCR packages | Your profile or organization, Packages | After the first published release: set `certping`, `certping-server`, `certping-web`, `certping-agent`, `certping-notifier`, `charts/certping` and `charts/certping-agent` to public, and connect each to the `certping-labs/certping` repository. |
+| Code scanning | Settings, Security (Code security) | On. The weekly Image scan workflow uploads its results there. |
 | Docker Hub | Settings, Secrets and variables, Actions | Variable `DOCKERHUB_NAMESPACE` (the Docker Hub organization), secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (an access token with read and write scope). Create the repositories `certping`, `certping-server`, `certping-web`, `certping-agent` and `certping-notifier` in that organization first. Without the variable, releases go to GHCR only. |
 | Discussions | Settings, General, Features | On. The README, `SUPPORT.md` and the issue template link to it. |
 | Private vulnerability reporting | Settings, Security (Advisories) | On. `SECURITY.md` names it as a reporting channel. |
@@ -116,7 +125,8 @@ mechanisms. Checking one does not check the others.
 | Source and tag authenticity: is this tag the commit the maintainers released? | The GitHub release is created by the Release workflow from a commit on `main`, with `--target <sha>`, and the tag is created on publish. Commit signatures are not required yet. | Release page, `release-metadata.json` (`commit`) |
 | Container image authenticity: was this image pushed by this repository's release workflow? | Sigstore keyless signature on the image digest. The signing identity is the Release workflow of `certping-labs/certping`, not a person's key. | `cosign verify` |
 | Build provenance: how and from what was it built? | SLSA build provenance attestation (GitHub artifact attestations) naming the workflow, the commit and the builder. | `gh attestation verify` |
-| Artifact integrity: are the files I downloaded the ones the release produced? | `SHA256SUMS` lists the checksums; the Sigstore bundle `SHA256SUMS.sigstore.json` signs that list; attestations cover the SBOMs, metadata and checksums. | `sha256sum -c`, `cosign verify-blob` |
+| Artifact integrity: are the files I downloaded the ones the release produced? | `SHA256SUMS` lists the checksums of every attached file (SBOMs, scan reports, metadata); the Sigstore bundle `SHA256SUMS.sigstore.json` signs that list; attestations cover every attached file. | `sha256sum -c`, `cosign verify-blob` |
+| Known vulnerabilities at release time | The image scan reports, run on the pushed digests before tagging. They say what the vulnerability database knew that day, not that an image is free of vulnerabilities. | `trivy-*.json`, `release-metadata.json` (`image_scan`) |
 
 Keyless signing needs a public Sigstore identity, so the workflow signs and
 attests only when the repository is public. `release-metadata.json`
@@ -177,6 +187,16 @@ The SBOM lists CertPing's own software dependencies with their licenses. Feed
 it to your own scanner (for example `trivy sbom dist/sbom-server.cdx.json`) to
 check it against the vulnerability database of the day you install.
 
+### Image scan reports
+
+`trivy-<image>-linux-<arch>.json` is what the release's scan found, and lists
+every package in the image. Read it with
+`trivy convert --format table dist/trivy-server-linux-amd64.json`. To check an
+image against today's database, scan it by digest yourself:
+`trivy image ghcr.io/certping-labs/certping-server@sha256:<digest>`. The weekly
+Image scan workflow does that for the latest release and reports in the
+repository's Security tab.
+
 ### Deploying by digest
 
 Pin to the verified digest rather than the tag, so what runs is what was
@@ -210,7 +230,10 @@ out of the notes.
 - Commit signing is not required. Once the maintainers sign commits, the
   ruleset can require signed commits on `main`, which adds a check on source
   authenticity that today rests on GitHub access control alone.
-- The trivy scan is blocking (`exit-code: 1` in `.github/trivy.yaml`). Any new
-  fixable HIGH or CRITICAL finding must be fixed before release, or added as a
+- The trivy scan is blocking (`exit-code: 1` in `.github/trivy.yaml`), for the
+  repository scan and for the image scan in the Release workflow. Any new
+  fixable HIGH or CRITICAL finding must be fixed before release (for an
+  operating system package, usually by updating the base image), or added as a
   narrow, expiring exception with an owner and rationale in
   `.github/.trivyignore.yaml`.
+- Dry runs push no images, so they do not scan images.

@@ -6,7 +6,11 @@
 #   - Every entry needs `id`, `expired_at` (at most 90 days out), `statement`
 #     (why it does not affect CertPing or why the fix must wait) and the
 #     accepting maintainer's GitHub handle in the statement.
-#   - Narrow entries with `paths` to the manifest they apply to.
+#   - Narrow entries with `paths` to the manifest they apply to. The image scans
+#     of the Release and Image scan workflows report paths inside the image
+#     (app/app.jar, opt/certping/web/node_modules/...) and none for operating
+#     system packages: narrow those with `purls`, the package URL the report
+#     gives for the finding (PkgIdentifier.PURL), or the path inside the image.
 #   - Trivy reports the finding again once `expired_at` has passed, so an
 #     exception cannot be forgotten; renew it deliberately or fix it.
 #   - An entry is a review item on the PR that adds it (code owners of
