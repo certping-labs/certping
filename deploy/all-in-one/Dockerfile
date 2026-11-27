@@ -21,15 +21,24 @@ ARG WEB_IMAGE=ghcr.io/certping-labs/certping-web:${CERTPING_VERSION}
 ARG AGENT_IMAGE=ghcr.io/certping-labs/certping-agent:${CERTPING_VERSION}
 ARG NOTIFIER_IMAGE=ghcr.io/certping-labs/certping-notifier:${CERTPING_VERSION}
 ARG NODE_IMAGE=node:24.22.3-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530
-# caddy:2.11.9-alpine
-ARG CADDY_IMAGE=caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+# caddy:2.11.9-builder
+ARG CADDY_BUILDER_IMAGE=caddy:2.11.9-builder@sha256:cda07fe9d82728c7ac44d844306d435e98131423dc7b114f05a8a8ecfff94707
 
 FROM ${SERVER_IMAGE} AS server
 FROM ${WEB_IMAGE} AS web
 FROM ${AGENT_IMAGE} AS agent
 FROM ${NOTIFIER_IMAGE} AS notifier
 FROM ${NODE_IMAGE} AS node
-FROM ${CADDY_IMAGE} AS caddy
+
+# Caddy 2.11.9 as the release binary is built (same build tags, static, stripped), with
+# golang.org/x/net raised to 0.62.0: the release's 0.60.0 has fixable vulnerabilities
+# (CVE-2026-78661, CVE-2026-97045). Cross-compiled on the build platform, so no emulation.
+FROM --platform=$BUILDPLATFORM ${CADDY_BUILDER_IMAGE} AS caddy
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" XCADDY_SETCAP=0 \
+    XCADDY_GO_BUILD_FLAGS="-trimpath -ldflags='-w -s' -tags=nobadger,nomysql,nopgx" \
+    xcaddy build v2.11.9 --replace golang.org/x/net=golang.org/x/net@v0.62.0 --output /usr/bin/caddy
 
 # Ubuntu 26.04 with a JRE 25: PostgreSQL 18, Valkey 9 (the BSD-licensed, Redis-compatible store
 # the server uses) and supervisor come from Ubuntu's own archive (valkey-server is in main).

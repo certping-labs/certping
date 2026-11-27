@@ -369,8 +369,8 @@ function pnpmComponents(file) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Go modules compiled into the Caddy binary of the all-in-one: modules.txt is what `caddy
-// build-info` prints, and each <module>@<version>/ holds the legal files of that module's source
+// Go modules compiled into the Caddy binary of the all-in-one: modules.txt lists the Go toolchain
+// and the modules `caddy build-info` prints, at the versions linked (after replacements), and each <module>@<version>/ holds the legal files of that module's source
 // at that version (licenses/README.md says how they were collected).
 
 const CADDY = path.join(COMPONENTS, 'caddy-2.11.9');
@@ -449,8 +449,8 @@ const BASE_IMAGES = [
   },
   {
     image: 'caddy',
-    tag: '2.11.9-alpine',
-    digest: 'sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0',
+    tag: '2.11.9-builder',
+    digest: 'sha256:cda07fe9d82728c7ac44d844306d435e98131423dc7b114f05a8a8ecfff94707',
     dockerfiles: ['deploy/all-in-one/Dockerfile'],
   },
   {
@@ -704,13 +704,14 @@ Source code: see section 7.`,
     title: 'Caddy',
     version: '2.11.9',
     licenses: ['Apache-2.0'],
-    where: '/usr/local/bin/caddy (from the caddy:2.11.9-alpine image)',
+    where: '/usr/local/bin/caddy (built with xcaddy in the caddy:2.11.9-builder image, golang.org/x/net 0.62.0)',
     body: `Copyright 2015 Matthew Holt and The Caddy Authors. Source: https://github.com/caddyserver/caddy
 (tag v2.11.9). Caddy is a Go program: the binary contains the Go standard library and runtime and
 the Go modules listed in section 2 under "Go modules in /usr/local/bin/caddy", at the versions
-\`caddy build-info\` prints from it. Their license, NOTICE and patent files are in sections 4 and
-5 and the license texts in section 6; the source code of each module at that version is at the
-address listed with it.`,
+\`caddy build-info\` prints from it (golang.org/x/net replaced by 0.62.0, built with
+\`xcaddy build v2.11.9 --replace golang.org/x/net=golang.org/x/net@v0.62.0\`). Their license,
+NOTICE and patent files are in sections 4 and 5 and the license texts in section 6; the source
+code of each module at that version is at the address listed with it.`,
   },
   nodeRuntime('24.22.3', '24.22.3', '/usr/local/bin/node (from the node:24.22.3-bookworm-slim image)', ''),
   {

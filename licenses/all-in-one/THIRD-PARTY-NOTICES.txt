@@ -88,14 +88,15 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 Caddy
   Version: 2.11.9
   License: Apache-2.0
-  Location: /usr/local/bin/caddy (from the caddy:2.11.9-alpine image)
+  Location: /usr/local/bin/caddy (built with xcaddy in the caddy:2.11.9-builder image, golang.org/x/net 0.62.0)
 
 Copyright 2015 Matthew Holt and The Caddy Authors. Source: https://github.com/caddyserver/caddy
 (tag v2.11.9). Caddy is a Go program: the binary contains the Go standard library and runtime and
 the Go modules listed in section 2 under "Go modules in /usr/local/bin/caddy", at the versions
-`caddy build-info` prints from it. Their license, NOTICE and patent files are in sections 4 and
-5 and the license texts in section 6; the source code of each module at that version is at the
-address listed with it.
+`caddy build-info` prints from it (golang.org/x/net replaced by 0.62.0, built with
+`xcaddy build v2.11.9 --replace golang.org/x/net=golang.org/x/net@v0.62.0`). Their license,
+NOTICE and patent files are in sections 4 and 5 and the license texts in section 6; the source
+code of each module at that version is at the address listed with it.
 
 ----------------------------------------------------------------------------------------------------
 Node.js
@@ -9419,9 +9420,9 @@ github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 github.com/zeebo/blake3 v0.2.4
     CC0-1.0
     https://proxy.golang.org/github.com/zeebo/blake3/@v/v0.2.4.zip
-Go standard library and runtime go1.27.3
+Go standard library and runtime go1.27.4
     BSD-3-Clause
-    https://github.com/golang/go/tree/go1.27.3
+    https://github.com/golang/go/tree/go1.27.4
 go.etcd.io/bbolt v1.5.0
     MIT
     https://proxy.golang.org/go.etcd.io/bbolt/@v/v1.5.0.zip
@@ -9527,33 +9528,33 @@ go.uber.org/zap/exp v0.3.0
 go.yaml.in/yaml/v3 v3.0.5
     Apache-2.0 AND MIT
     https://proxy.golang.org/go.yaml.in/yaml/v3/@v/v3.0.5.zip
-golang.org/x/crypto v0.57.0
+golang.org/x/crypto v0.58.0
     BSD-3-Clause
-    https://proxy.golang.org/golang.org/x/crypto/@v/v0.57.0.zip
+    https://proxy.golang.org/golang.org/x/crypto/@v/v0.58.0.zip
 golang.org/x/crypto/x509roots/fallback v0.0.0-20261030153154-30a33513ff6d
     BSD-3-Clause
     https://proxy.golang.org/golang.org/x/crypto/x509roots/fallback/@v/v0.0.0-20261030153154-30a33513ff6d.zip
 golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba
     BSD-3-Clause
     https://proxy.golang.org/golang.org/x/exp/@v/v0.0.0-20260908205506-85c1c2202aba.zip
-golang.org/x/net v0.60.0
+golang.org/x/net v0.62.0
     BSD-3-Clause
-    https://proxy.golang.org/golang.org/x/net/@v/v0.60.0.zip
+    https://proxy.golang.org/golang.org/x/net/@v/v0.62.0.zip
 golang.org/x/oauth2 v0.37.0
     BSD-3-Clause
     https://proxy.golang.org/golang.org/x/oauth2/@v/v0.37.0.zip
-golang.org/x/sync v0.23.0
+golang.org/x/sync v0.24.0
     BSD-3-Clause
-    https://proxy.golang.org/golang.org/x/sync/@v/v0.23.0.zip
-golang.org/x/sys v0.48.0
+    https://proxy.golang.org/golang.org/x/sync/@v/v0.24.0.zip
+golang.org/x/sys v0.49.0
     BSD-3-Clause
-    https://proxy.golang.org/golang.org/x/sys/@v/v0.48.0.zip
-golang.org/x/term v0.46.0
+    https://proxy.golang.org/golang.org/x/sys/@v/v0.49.0.zip
+golang.org/x/term v0.47.0
     BSD-3-Clause
-    https://proxy.golang.org/golang.org/x/term/@v/v0.46.0.zip
-golang.org/x/text v0.42.0
+    https://proxy.golang.org/golang.org/x/term/@v/v0.47.0.zip
+golang.org/x/text v0.43.0
     BSD-3-Clause
-    https://proxy.golang.org/golang.org/x/text/@v/v0.42.0.zip
+    https://proxy.golang.org/golang.org/x/text/@v/v0.43.0.zip
 golang.org/x/time v0.16.0
     BSD-3-Clause
     https://proxy.golang.org/golang.org/x/time/@v/v0.16.0.zip
@@ -16068,17 +16069,17 @@ express Statement of Purpose.
     this CC0 or use of the Work.
 
 ----------------------------------------------------------------------------------------------------
-From: Go standard library and runtime go1.27.3 (LICENSE)
+From: Go standard library and runtime go1.27.4 (LICENSE)
       github.com/smallstep/pkcs7 v0.2.3 (internal/cryptobyte/LICENSE)
-      golang.org/x/crypto v0.57.0 (LICENSE)
+      golang.org/x/crypto v0.58.0 (LICENSE)
       golang.org/x/crypto/x509roots/fallback v0.0.0-20261030153154-30a33513ff6d (LICENSE)
       golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba (LICENSE)
-      golang.org/x/net v0.60.0 (LICENSE)
+      golang.org/x/net v0.62.0 (LICENSE)
       golang.org/x/oauth2 v0.37.0 (LICENSE)
-      golang.org/x/sync v0.23.0 (LICENSE)
-      golang.org/x/sys v0.48.0 (LICENSE)
-      golang.org/x/term v0.46.0 (LICENSE)
-      golang.org/x/text v0.42.0 (LICENSE)
+      golang.org/x/sync v0.24.0 (LICENSE)
+      golang.org/x/sys v0.49.0 (LICENSE)
+      golang.org/x/term v0.47.0 (LICENSE)
+      golang.org/x/text v0.43.0 (LICENSE)
       golang.org/x/time v0.16.0 (LICENSE)
 ----------------------------------------------------------------------------------------------------
 Copyright 2009 The Go Authors.
@@ -16110,15 +16111,15 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------------------------------------
-From: Go standard library and runtime go1.27.3 (PATENTS)
+From: Go standard library and runtime go1.27.4 (PATENTS)
       github.com/smallstep/pkcs7 v0.2.3 (internal/cryptobyte/PATENTS)
-      golang.org/x/crypto v0.57.0 (PATENTS)
+      golang.org/x/crypto v0.58.0 (PATENTS)
       golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba (PATENTS)
-      golang.org/x/net v0.60.0 (PATENTS)
-      golang.org/x/sync v0.23.0 (PATENTS)
-      golang.org/x/sys v0.48.0 (PATENTS)
-      golang.org/x/term v0.46.0 (PATENTS)
-      golang.org/x/text v0.42.0 (PATENTS)
+      golang.org/x/net v0.62.0 (PATENTS)
+      golang.org/x/sync v0.24.0 (PATENTS)
+      golang.org/x/sys v0.49.0 (PATENTS)
+      golang.org/x/term v0.47.0 (PATENTS)
+      golang.org/x/text v0.43.0 (PATENTS)
       golang.org/x/time v0.16.0 (PATENTS)
       google.golang.org/protobuf v1.36.12 (PATENTS)
 ----------------------------------------------------------------------------------------------------

@@ -322,6 +322,11 @@ to date" check fails until a maintainer updates them on that pull request:
    written as `_`, for example `OpenJDK25U-jdk-sources_25.0.5.1_2.tar.gz`) of the matching
    `adoptium/temurin25-binaries` release, with the SHA-256 that the release
    publishes beside it (`.sha256.txt`), checked against the downloaded file.
+   The all-in-one builds Caddy in the `caddy:<version>-builder` image with
+   `xcaddy`, replacing `golang.org/x/net` with a fixed version. When Caddy is
+   updated, change the version in `xcaddy build`, drop the replacement once
+   the new Caddy requires that version or later, and collect
+   `licenses/components/caddy-<version>/` again from the new binary.
 4. Run `.github/scripts/third-party-notices.sh`, then commit with a sign-off
    (`git commit -s`) and push.
 
