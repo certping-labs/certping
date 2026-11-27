@@ -277,9 +277,13 @@ function mavenComponents(file) {
     }
     const files = [];
     for (const entry of jarEntries(d.jar)) {
-      if (!/^(META-INF\/)?[^/]*(LICEN[CS]E|NOTICE|COPYING|COPYRIGHT)[^/]*$/i.test(entry)) continue;
+      // Top-level and META-INF legal files, and the ones jars bundle for code they shade or embed
+      // under META-INF/license(s)/.
+      const legal = /^(META-INF\/)?[^/]*(LICEN[CS]E|NOTICE|COPYING|COPYRIGHT)[^/]*$/i.test(entry)
+        || /^META-INF\/licen[cs]es?\/./i.test(entry);
+      if (!legal) continue;
       if (/\.(class|html?|xml)$/i.test(entry) || entry.endsWith('/')) continue;
-      files.push({ kind: /NOTICE/i.test(entry) ? 'notice' : 'license', name: entry, text: jarText(d.jar, entry) });
+      files.push({ kind: /NOTICE/i.test(path.basename(entry)) ? 'notice' : 'license', name: entry, text: jarText(d.jar, entry) });
     }
     components.push({
       id: `${d.g}:${d.a}${d.classifier ? ':' + d.classifier : ''}`,
