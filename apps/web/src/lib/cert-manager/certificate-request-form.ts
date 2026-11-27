@@ -69,14 +69,14 @@ export const certificateRequestSchema = z
     wildcard: z.boolean().default(false),
     san: z.boolean().default(false),
     sanDomains: z.array(z.string().regex(SAN_DOMAIN_REGEX)).default([]),
-    sanCredentialMap: z.record(z.string()).default({}),
+    sanCredentialMap: z.record(z.string(), z.string()).default({}),
     caProvider: z
       .enum(["DIGICERT", "LETS_ENCRYPT", "GLOBALSIGN"])
       .default("LETS_ENCRYPT"),
     dnsCredentialXref: z.string().trim().optional(),
     caCredentialXref: z.string().trim().optional(),
     validityDays: z.coerce
-      .number({ invalid_type_error: "Enter a number of days" })
+      .number({ error: "Enter a number of days" })
       .int("Validity must be a whole number of days")
       .min(
         VALIDITY_MIN_DAYS,

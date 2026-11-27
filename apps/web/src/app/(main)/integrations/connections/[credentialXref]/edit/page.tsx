@@ -6,7 +6,7 @@
 import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -502,7 +502,9 @@ export default function EditCredentialPage() {
   );
 
   const form = useForm<EditCredentialFormValues>({
-    resolver: zodResolver(editCredentialFormSchema),
+    resolver: zodResolver(
+      editCredentialFormSchema,
+    ) as Resolver<EditCredentialFormValues>,
     defaultValues: {
       provider: providerApiValue,
       secretHandle: "",

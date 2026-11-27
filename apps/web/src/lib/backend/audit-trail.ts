@@ -21,7 +21,9 @@ export const optionalNumber = z
   .nullish()
   .transform((value) => value ?? undefined);
 
-const detailsSchema = z.object({ attributes: z.record(z.unknown()) });
+const detailsSchema = z.object({
+  attributes: z.record(z.string(), z.unknown()),
+});
 
 /** The string attributes of a row's details, a JSON string; none when it does not decode. */
 export const readDetailAttributes = (

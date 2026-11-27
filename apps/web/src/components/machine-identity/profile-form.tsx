@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -374,7 +374,7 @@ export function ProfileForm({
   const caConnectorsQuery = useCaConnectors();
 
   const form = useForm<ProfileFormValues>({
-    resolver: zodResolver(profileSchema),
+    resolver: zodResolver(profileSchema) as Resolver<ProfileFormValues>,
     defaultValues: profile ? toFormValues(profile) : DEFAULT_VALUES,
   });
 
