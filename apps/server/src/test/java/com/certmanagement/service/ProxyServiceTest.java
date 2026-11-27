@@ -4,12 +4,11 @@
 package com.certmanagement.service;
 
 import com.certmanagement.security.GatewayRequestContext;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpEntity;
@@ -19,13 +18,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,12 +37,11 @@ class ProxyServiceTest {
 
     @Mock private RestTemplate restTemplate;
 
-    private final ObjectMapper objectMapper = JsonMapper.builderWithJackson2Defaults().build();
     private ProxyService service;
 
     @BeforeEach
     void setUp() {
-        service = new ProxyService(restTemplate, objectMapper, BASE);
+        service = new ProxyService(restTemplate, BASE);
         GatewayRequestContext.clear();
     }
 
@@ -54,58 +55,11 @@ class ProxyServiceTest {
         GatewayRequestContext.setCorrelationId("corr-2");
     }
 
-    // ===== enrichJsonBody =====
-
-    @Test
-    void enrichJsonBody_noContext_returnsOriginal() {
-        assertThat(service.enrichJsonBody("{\"a\":1}")).isEqualTo("{\"a\":1}");
+    private URI requested() {
+        ArgumentCaptor<URI> uri = ArgumentCaptor.forClass(URI.class);
+        verify(restTemplate).exchange(uri.capture(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class));
+        return uri.getValue();
     }
-
-    @Test
-    void enrichJsonBody_withContext_injectsFieldsAndOwner() throws Exception {
-        setContext();
-        String out = service.enrichJsonBody("{\"a\":1}");
-
-        Map<?, ?> map = objectMapper.readValue(out, Map.class);
-        assertThat(map.get("userId")).isEqualTo(7);
-        assertThat(map.get("organizationId")).isEqualTo("org-9");
-        assertThat(map.get("requestId")).isEqualTo("req-1");
-        assertThat(map.get("email")).isEqualTo("u@x.io");
-        assertThat(map.get("correlationId")).isEqualTo("corr-2");
-        assertThat(map.get("a")).isEqualTo(1);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> owner = (Map<String, Object>) map.get("owner");
-        assertThat(owner.get("userId")).isEqualTo(7);
-        assertThat(owner.get("organizationId")).isEqualTo("org-9");
-    }
-
-    @Test
-    void enrichJsonBody_blankBody_createsMapWithContext() throws Exception {
-        setContext();
-        String out = service.enrichJsonBody("");
-        Map<?, ?> map = objectMapper.readValue(out, Map.class);
-        assertThat(map.get("userId")).isEqualTo(7);
-    }
-
-    @Test
-    void enrichJsonBody_preservesExistingOwnerMap() throws Exception {
-        setContext();
-        String out = service.enrichJsonBody("{\"owner\":{\"role\":\"admin\"}}");
-        Map<?, ?> map = objectMapper.readValue(out, Map.class);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> owner = (Map<String, Object>) map.get("owner");
-        assertThat(owner.get("role")).isEqualTo("admin");
-        assertThat(owner.get("userId")).isEqualTo(7);
-    }
-
-    @Test
-    void enrichJsonBody_invalidJson_returnsOriginal() {
-        setContext();
-        assertThat(service.enrichJsonBody("not-json")).isEqualTo("not-json");
-    }
-
-    // ===== enrichQueryParams =====
 
     @Test
     void enrichQueryParams_noContext_returnsOriginal() {
@@ -125,41 +79,37 @@ class ProxyServiceTest {
         assertThat(out.get("correlationId")).isEqualTo("corr-2");
     }
 
-    // ===== HTTP verbs: success / error / unexpected =====
-
     @Test
-    void post_success_relaysBody() {
-        when(restTemplate.exchange(eq(BASE + "/p"), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.status(HttpStatus.CREATED).body("ok"));
+    void get_withQueryParams_buildsUrlAndRelays() {
+        setContext();
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("g"));
 
-        ResponseEntity<String> resp = service.post("/p", "{}");
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(resp.getBody()).isEqualTo("ok");
+        assertThat(service.get("/g", Map.of("foo", "bar")).getBody()).isEqualTo("g");
+
+        URI uri = requested();
+        assertThat(uri.getHost()).isEqualTo("notif.local");
+        assertThat(uri.getPath()).isEqualTo("/g");
+        assertThat(UriComponentsBuilder.fromUri(uri).build().getQueryParams().toSingleValueMap())
+                .containsEntry("foo", "bar").containsEntry("organizationId", "org-9");
     }
 
     @Test
-    void post_httpStatusError_relaysError() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
-                .thenThrow(HttpClientErrorException.create(HttpStatus.BAD_REQUEST, "bad", null, "err-body".getBytes(), null));
+    void get_aValueCannotAddAnotherParameter() {
+        setContext();
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("[]"));
 
-        ResponseEntity<String> resp = service.post("/p", "{}");
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(resp.getBody()).isEqualTo("err-body");
-    }
+        service.get("/g", Map.of("status", "SENT&organizationId=other#x"));
 
-    @Test
-    void post_unexpectedError_returns500() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
-                .thenThrow(new RuntimeException("boom"));
-
-        ResponseEntity<String> resp = service.post("/p", "{}");
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(resp.getBody()).contains("Proxy error");
+        var params = UriComponentsBuilder.fromUri(requested()).build(true).getQueryParams();
+        assertThat(params.get("organizationId")).containsExactly("org-9");
+        assertThat(params.getFirst("status")).isEqualTo("SENT%26organizationId%3Dother%23x");
     }
 
     @Test
     void get_downstreamTimeout_returns504() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
                 .thenThrow(new ResourceAccessException("read timed out"));
 
         ResponseEntity<String> resp = service.get("/p", Map.of());
@@ -168,86 +118,20 @@ class ProxyServiceTest {
     }
 
     @Test
-    void put_success_relaysBody() {
-        when(restTemplate.exchange(eq(BASE + "/p"), eq(HttpMethod.PUT), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("ok"));
-        assertThat(service.put("/p", "{}").getBody()).isEqualTo("ok");
-    }
-
-    @Test
-    void put_unexpectedError_returns500() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.PUT), any(HttpEntity.class), eq(String.class)))
-                .thenThrow(new RuntimeException("boom"));
-        assertThat(service.put("/p", "{}").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
-    @Test
-    void get_withQueryParams_buildsUrlAndRelays() {
-        setContext();
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("g"));
-
-        Map<String, String> q = new LinkedHashMap<>();
-        q.put("foo", "bar");
-        assertThat(service.get("/g", q).getBody()).isEqualTo("g");
-    }
-
-    @Test
     void get_httpStatusError_relaysError() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
                 .thenThrow(HttpClientErrorException.create(HttpStatus.NOT_FOUND, "nf", null, "nope".getBytes(), null));
-        assertThat(service.get("/g", null).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        ResponseEntity<String> resp = service.get("/g", null);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(resp.getBody()).isEqualTo("nope");
     }
 
     @Test
-    void delete_success_relays() {
-        when(restTemplate.exchange(eq(BASE + "/d"), eq(HttpMethod.DELETE), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("d"));
-        assertThat(service.delete("/d").getBody()).isEqualTo("d");
-    }
-
-    @Test
-    void delete_unexpectedError_returns500() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.DELETE), any(HttpEntity.class), eq(String.class)))
+    void get_unexpectedError_returns500() {
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
                 .thenThrow(new RuntimeException("boom"));
-        assertThat(service.delete("/d").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-
-    @Test
-    void deleteWithBody_success_relays() {
-        when(restTemplate.exchange(eq(BASE + "/d"), eq(HttpMethod.DELETE), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("d"));
-        assertThat(service.deleteWithBody("/d", "{}").getBody()).isEqualTo("d");
-    }
-
-    @Test
-    void patch_success_relays() {
-        when(restTemplate.exchange(eq(BASE + "/x"), eq(HttpMethod.PATCH), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("p"));
-        assertThat(service.patch("/x", "{}").getBody()).isEqualTo("p");
-    }
-
-    @Test
-    void patch_httpStatusError_relaysError() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.PATCH), any(HttpEntity.class), eq(String.class)))
-                .thenThrow(HttpClientErrorException.create(HttpStatus.CONFLICT, "c", null, "dup".getBytes(), null));
-        assertThat(service.patch("/x", "{}").getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-    }
-
-    @Test
-    void patchWithQueryParams_success_relays() {
-        setContext();
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.PATCH), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("pq"));
-        Map<String, String> q = new LinkedHashMap<>();
-        q.put("k", "v");
-        assertThat(service.patch("/x", "{}", q).getBody()).isEqualTo("pq");
-    }
-
-    @Test
-    void patchWithQueryParams_unexpectedError_returns500() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.PATCH), any(HttpEntity.class), eq(String.class)))
-                .thenThrow(new RuntimeException("boom"));
-        assertThat(service.patch("/x", "{}", null).getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        ResponseEntity<String> resp = service.get("/g", null);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(resp.getBody()).contains("Proxy error");
     }
 }
