@@ -9,11 +9,11 @@ name: Release
 # that exact commit, tests the commit again, builds the four application images
 # for linux/amd64 and linux/arm64 on native runners, assembles the all-in-one
 # image from them by digest, scans every image for vulnerabilities before it is
-# tagged, writes a CycloneDX SBOM per image, a release-metadata.json and a
-# SHA256SUMS file, signs and attests what it can (public repository only), and
-# opens a DRAFT GitHub release for review. No tag exists until a maintainer
-# publishes the draft by hand; publishing creates the tag on the release
-# commit. See .github/RELEASING.md.
+# tagged, writes a CycloneDX SBOM per image, the Compose kit and Helm charts, a
+# release-metadata.json and a SHA256SUMS file, signs and attests what it can
+# (public repository only), and opens a DRAFT GitHub release for review. No tag
+# exists until a maintainer publishes the draft by hand; publishing creates the
+# tag on the release commit. See .github/RELEASING.md.
 #
 # Approval gates (GitHub environments):
 #   release         every run, before anything is built (the `approve` job)
@@ -711,17 +711,68 @@ jobs:
             cosign copy --only=sig,att --force "$(cat "$f")" "docker.io/$NAMESPACE/$name:$TAG"
           done
 
+  # The self-hosting kits as release assets: the Compose kit with the images pinned to this release
+  # (by digest when they were pushed) and both Helm charts with LICENSE and NOTICE. Runs on a dry
+  # run too, pinned by tag only then.
+  bundle:
+    name: Package the Compose kit and Helm charts
+    needs: [validate, build, publish]
+    if: >-
+      always() && needs.build.result == 'success' &&
+      (inputs.publish_images && needs.publish.result == 'success' || !inputs.publish_images)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.validate.outputs.image_tag }}
+      PUBLISH: ${{ inputs.publish_images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: inputs.publish_images
+        with:
+          pattern: release-image-*
+          merge-multiple: true
+          path: images
+      # GitHub-hosted runners ship helm.
+      - run: helm version
+      - name: Package the Helm charts
+        run: |
+          for chart in certping certping-agent; do
+            cp LICENSE NOTICE "deploy/charts/$chart/"
+            helm package "deploy/charts/$chart" --version "$VERSION" --app-version "$VERSION" --destination dist
+            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/LICENSE"
+            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/NOTICE"
+          done
+      - name: Package the Compose kit
+        run: |
+          refs=()
+          if [ "$PUBLISH" = "true" ]; then
+            for app in web server agent notifier; do refs+=("$app=$(cat "images/image-$app.txt")"); done
+          fi
+          .github/scripts/compose-bundle.sh "$VERSION" dist "${refs[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-bundle
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
   charts:
     name: Publish the Helm charts
-    # Both charts at the release version, pushed to GHCR as OCI artifacts. Their default image tag
-    # is the chart's appVersion, so a chart points at the images of the same release:
+    # The chart packages attached to the release, pushed to GHCR as OCI artifacts. Their default
+    # image tag is the chart's appVersion, so a chart points at the images of the same release:
     # helm install certping oci://ghcr.io/certping-labs/charts/certping --version <version>
-    needs: [validate, publish, all-in-one-publish]
+    needs: [validate, bundle, all-in-one-publish]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
     if: >-
       always() && inputs.publish_images &&
-      needs.publish.result == 'success' && needs.all-in-one-publish.result == 'success'
+      needs.bundle.result == 'success' && needs.all-in-one-publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -732,36 +783,34 @@ jobs:
       VERSION: ${{ needs.validate.outputs.image_tag }}
       ACTOR: ${{ github.actor }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          ref: ${{ needs.validate.outputs.sha }}
-          persist-credentials: false
+          name: release-bundle
+          path: dist
       # GitHub-hosted runners ship helm.
       - run: helm version
       - name: Log in to GHCR
         env:
           GH_TOKEN: ${{ github.token }}
         run: echo "$GH_TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
-      - name: Package and push
+      - name: Push
         run: |
           for chart in certping certping-agent; do
-            cp LICENSE NOTICE "deploy/charts/$chart/"
-            helm package "deploy/charts/$chart" --version "$VERSION" --app-version "$VERSION" --destination dist
-            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/LICENSE"
-            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/NOTICE"
             helm push "dist/$chart-$VERSION.tgz" "$REGISTRY"
           done
 
   draft:
     name: Sign artifacts and draft the release
-    needs: [validate, sbom, build, publish, all-in-one-publish]
-    # publish and all-in-one-publish are skipped on a dry run (publish_images off); the draft
-    # still runs then and says that no images were pushed. When images were requested, both must
-    # have succeeded, so a draft never lists empty image digests or unscanned images.
+    needs: [validate, sbom, build, publish, all-in-one-publish, bundle, charts]
+    # publish, all-in-one-publish and charts are skipped on a dry run (publish_images off); the
+    # draft still runs then and says that no images were pushed. When images were requested, all
+    # must have succeeded, so a draft never lists empty image digests or unscanned images.
     if: >-
       always() && needs.sbom.result == 'success' && needs.build.result == 'success' &&
+      needs.bundle.result == 'success' &&
       (inputs.publish_images
         && needs.publish.result == 'success' && needs.all-in-one-publish.result == 'success'
+        && needs.charts.result == 'success'
         || !inputs.publish_images)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -819,11 +868,15 @@ jobs:
               critical: ([$r[0].Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length),
               high: ([$r[0].Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length)}]' <<< "$scans")
           done
+          compose=(certping-compose-*.zip)
+          charts=(certping-*.tgz)
+          bundle=$(jq -cn --arg compose "${compose[0]}" '{compose: $compose, charts: $ARGS.positional}' --args "${charts[@]}")
           jq -n \
             --arg version "$VERSION" --arg sha "$SHA" --arg repo "$REPO_URL" --arg run "$RUN_URL" \
             --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg scan "$SCAN_MODE" \
             --argjson pre "$PRERELEASE" --argjson pushed "$PUBLISH" --argjson public "$IS_PUBLIC" \
-            --argjson images "$images" --argjson sboms "$sboms" --argjson scans "$scans" '{
+            --argjson images "$images" --argjson sboms "$sboms" --argjson scans "$scans" \
+            --argjson bundle "$bundle" '{
               version: $version, prerelease: $pre, commit: $sha, repository: $repo,
               workflow_run: $run, built_at: $built,
               platforms: ["linux/amd64", "linux/arm64"],
@@ -837,6 +890,7 @@ jobs:
                 note: (if ($pushed | not) then "Not run: the images were not pushed (dry run)."
                        elif $scan == "blocking" then "Every image, on both platforms, was scanned before it was tagged; the release fails on any fixable HIGH or CRITICAL finding not accepted in .github/.trivyignore.yaml."
                        else "Report-only: the open fixable HIGH and CRITICAL findings are in the reports. This release is not claimed to be free of known vulnerabilities." end)},
+              self_hosting: $bundle,
               signing: {images_signed: ($pushed and $public), images_attested: ($pushed and $public),
                         checksums_signed: $public, artifacts_attested: $public,
                         method: "Sigstore keyless (GitHub Actions OIDC identity)"}
@@ -863,6 +917,8 @@ jobs:
             dist/image-*.txt
             dist/sbom-*.cdx.json
             dist/trivy-*.json
+            dist/certping-compose-*.zip
+            dist/certping-*.tgz
             dist/release-metadata.json
             dist/SHA256SUMS
 
@@ -920,6 +976,16 @@ jobs:
               fi
             fi
             echo "- Secret scan (gitleaks) and CI passed for \`$SHA\` (checked by the Release workflow)."
+            echo
+            echo "### Self-hosting"
+            if [ "$PUBLISH" = "true" ]; then
+              echo "- \`certping-compose-${VERSION#v}.zip\`: the Compose kit, with the images pinned to this release by digest."
+              echo "- \`certping-${VERSION#v}.tgz\`, \`certping-agent-${VERSION#v}.tgz\`: the Helm charts, also at"
+              echo "  \`oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts\`."
+            else
+              echo "- \`certping-compose-${VERSION#v}.zip\`, \`certping-${VERSION#v}.tgz\`, \`certping-agent-${VERSION#v}.tgz\`:"
+              echo "  the Compose kit and the Helm charts (dry run: the images they name were not pushed)."
+            fi
             echo
             echo "### Supply chain"
             echo "- \`sbom-*.cdx.json\`: CycloneDX software SBOM per app (the software's own dependencies), and"

@@ -59,7 +59,10 @@ reviews and publishes by hand.
    - when publishing, builds the all-in-one image `ghcr.io/certping-labs/certping:<version>`
      from those four images by digest (its arm64 half runs under QEMU), and
      scans it the same way before tagging it;
-   - when publishing, pushes both Helm charts at the release version to
+   - packages the self-hosting kits: `certping-compose-<version>.zip` (the
+     Compose kit with the images pinned to the release, by digest when
+     published) and the two Helm charts as `.tgz` with LICENSE and NOTICE;
+   - when publishing, pushes those chart packages to
      `oci://ghcr.io/certping-labs/charts`, and, once Docker Hub is set up,
      copies all five images unchanged (same digests) to
      `docker.io/<namespace>/certping` and `docker.io/<namespace>/certping-<app>`;
@@ -125,7 +128,7 @@ mechanisms. Checking one does not check the others.
 | Source and tag authenticity: is this tag the commit the maintainers released? | The GitHub release is created by the Release workflow from a commit on `main`, with `--target <sha>`, and the tag is created on publish. Commit signatures are not required yet. | Release page, `release-metadata.json` (`commit`) |
 | Container image authenticity: was this image pushed by this repository's release workflow? | Sigstore keyless signature on the image digest. The signing identity is the Release workflow of `certping-labs/certping`, not a person's key. | `cosign verify` |
 | Build provenance: how and from what was it built? | SLSA build provenance attestation (GitHub artifact attestations) naming the workflow, the commit and the builder. | `gh attestation verify` |
-| Artifact integrity: are the files I downloaded the ones the release produced? | `SHA256SUMS` lists the checksums of every attached file (SBOMs, scan reports, metadata); the Sigstore bundle `SHA256SUMS.sigstore.json` signs that list; attestations cover every attached file. | `sha256sum -c`, `cosign verify-blob` |
+| Artifact integrity: are the files I downloaded the ones the release produced? | `SHA256SUMS` lists the checksums of every attached file (SBOMs, scan reports, Compose kit, Helm charts, metadata); the Sigstore bundle `SHA256SUMS.sigstore.json` signs that list; attestations cover every attached file. | `sha256sum -c`, `cosign verify-blob` |
 | Known vulnerabilities at release time | The image scan reports, run on the pushed digests before tagging. They say what the vulnerability database knew that day, not that an image is free of vulnerabilities. | `trivy-*.json`, `release-metadata.json` (`image_scan`) |
 
 Keyless signing needs a public Sigstore identity, so the workflow signs and
@@ -197,6 +200,13 @@ image against today's database, scan it by digest yourself:
 Image scan workflow does that for the latest release and reports in the
 repository's Security tab.
 
+### Compose kit and Helm charts
+
+`certping-compose-<version>.zip` and the chart `.tgz` files are in
+`SHA256SUMS`. The kit's `docker-compose.yml` names each CertPing image as
+`<version>@sha256:<digest>`; compare the digests with the release notes. The
+charts pushed to `oci://ghcr.io/certping-labs/charts` are the same files.
+
 ### Deploying by digest
 
 Pin to the verified digest rather than the tag, so what runs is what was
@@ -206,9 +216,11 @@ verified:
   with its digest, for example `ghcr.io/certping-labs/certping@sha256:<digest>`.
 - `certping-agent` chart: `--set image.tag=0.1.0@sha256:<digest>`; the chart
   renders `<repository>:<tag>`.
-- Compose kit and `certping` chart: one version applies to all four images,
-  so they cannot pin a digest per image yet. Check that the tag resolves to
-  the digests in the release notes with
+- Compose kit: use `certping-compose-<version>.zip` from the release assets;
+  it pins all four images by digest. The kit in the repository uses the tag.
+- `certping` chart: one version applies to all four images, so it cannot pin
+  a digest per image yet. Check that the tag resolves to the digests in the
+  release notes with
   `docker buildx imagetools inspect ghcr.io/certping-labs/certping-server:0.1.0`.
 
 ## SBOM versus CBOM
