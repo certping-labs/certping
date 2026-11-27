@@ -2,9 +2,15 @@
 
 CertPing® is a registered trademark of Seaionl Inc. in the United States.
 
-The CertPing code is licensed under the [Apache License 2.0](LICENSE). That
-license covers the code only. It does not grant any right to use the CertPing
-name or logo (Apache License 2.0, section 6).
+The CertPing code, and the CertPing logo and brand files in this repository,
+are licensed under the [Apache License 2.0](LICENSE). Anyone may copy and
+redistribute those files under that license, for example as part of a copy or
+fork of the repository.
+
+The Apache License grants no trademark rights (section 6). Seaionl Inc.
+reserves all rights in the CertPing name and logos: forks, derived products
+and services must not use them to identify themselves. That is why a fork
+replaces the logo in the product it distributes, as described below.
 
 ## What you may do
 
@@ -32,6 +38,5 @@ an unmodified CertPing for your own organization needs no change.
 
 ## Asking for permission
 
-For anything not covered here, email `support@certping.com` with "Trademark"
-in the subject. The project has no separate legal address; trademark questions
-sent there reach Seaionl Inc.
+For anything not covered here, email `legal@certping.com`. Trademark and
+licence questions sent there reach Seaionl Inc.

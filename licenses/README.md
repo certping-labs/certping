@@ -16,7 +16,9 @@ Every CertPing image carries these files in `/licenses/certping/`:
 | `server/`, `agent/`, `notifier/`, `web/`, `all-in-one/` | `THIRD-PARTY-NOTICES.txt` for each image (generated) |
 | `LICENSE`, `NOTICE` | Copies of the root files (generated) |
 | `texts/` | Full license texts, from the SPDX license list (EDL-1.0 from eclipse.org, the PostgreSQL License from PostgreSQL, GPL-2.0 with the Classpath Exception from OpenJDK) |
-| `components/` | Texts for components that are not application dependencies: the Node.js license, the Valkey license, the font licenses, the OpenTelemetry Java agent's bundled notices and the Go modules in Caddy |
+| `components/` | Texts for components that are not application dependencies: the Node.js license, the Valkey license, the font licenses and the OpenTelemetry Java agent's bundled notices |
+| `components/sharp-libvips-1.3.4/` | Per library bundled in libvips (`<library>-<version>`, as in the package's `versions.json`), its license and copyright files from its source at that version |
+| `components/caddy-2.8.4/` | `modules.txt` (what `caddy build-info` prints) and, per Go module and the Go toolchain, the license, NOTICE and patent files of its source at that version |
 | `../apps/<app>/licenses/` | Copies of `LICENSE`, `NOTICE` and the app's `THIRD-PARTY-NOTICES.txt` inside each app's Docker build context (generated) |
 
 Each app's Dockerfile copies `apps/<app>/licenses/` to `/licenses/certping/`; the all-in-one
@@ -43,10 +45,32 @@ export JAVA_HOME=<JDK 25>
 .github/scripts/third-party-notices.sh --check    # exit 1 if the committed files are stale (for CI)
 ```
 
+The Caddy files come from the module source archives on proxy.golang.org at the versions in
+`modules.txt` (the Go toolchain's from github.com/golang/go at its release tag): every LICENSE,
+COPYING, NOTICE, COPYRIGHT and PATENTS file in the archive, except test data, packaging files
+and files for other operating systems. When the Caddy version changes, replace `modules.txt` with
+the new binary's `caddy build-info` and collect the files again; the generator fails if a module
+has none.
+
+The libvips files come from the source tarballs that sharp-libvips' `build/posix.sh` downloads
+(at its release tag) for each library: the top-level license and copyright files, plus those of
+code a library bundles. When sharp-libvips changes, collect them again for the versions in its
+`versions.json`; the generator fails if a library has none.
+
 The script runs Maven offline by default; set `MVN_OFFLINE=` to let it download. It needs JDK
 25, Maven, Node.js 24 and pnpm. Versions of runtime components (OpenJDK, Node.js, PostgreSQL,
 Valkey, Caddy, the OpenTelemetry agent, the fonts) are written in
 `.github/scripts/third-party-notices.mjs`; update them there when a Dockerfile changes them.
+`BASE_IMAGES` there records the digest of each base image those versions were read from, and
+the generator fails when a Dockerfile pins another one.
+
+## Source code
+
+Section 7 of each `THIRD-PARTY-NOTICES.txt` names the components of that image licensed under
+the GPL or the LGPL, offers their complete corresponding source code in writing (on request to
+legal@certping.com, for at least three years after the image was last distributed) and lists
+where upstream publishes the source of the versions in the image. EPL-2.0 libraries name their
+source repository and tag and their `-sources.jar` in section 2.
 
 ## Elections
 

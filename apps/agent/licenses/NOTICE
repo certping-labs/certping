@@ -13,8 +13,8 @@ Third-party components
 Binary distributions of CertPing (the container images and the all-in-one
 image) include third-party software under its own licenses, among them
 OpenJDK (GPL-2.0 with the Classpath Exception), Node.js, PostgreSQL, Valkey,
-Caddy, the OpenTelemetry Java agent, libvips (LGPL-3.0-or-later, used through
-sharp) and the Java and npm libraries of each application. The attributions,
+Caddy, the OpenTelemetry Java agent, libvips (LGPL-2.1-or-later, used under
+the LGPL-3.0 through sharp) and the Java and npm libraries of each application. The attributions,
 NOTICE files, license elections and full license texts they require are in
 /licenses/certping/THIRD-PARTY-NOTICES.txt in each image, and in
 licenses/<image>/THIRD-PARTY-NOTICES.txt in the source repository.

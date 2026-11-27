@@ -7,7 +7,8 @@ image ships; do not edit it by hand.
 CertPing is Copyright 2024-2026 Seaionl Inc. and is licensed under the Apache License 2.0 (LICENSE,
 beside this file). Third-party components remain under their own licenses, given below. In the
 image these files are in /licenses/certping/. Source code for CertPing:
-https://github.com/certping-labs/certping
+https://github.com/certping-labs/certping. Section 7 offers the source code of the components
+licensed under the GPL or the LGPL.
 
 ====================================================================================================
 1. Components of the image besides the application
@@ -15,7 +16,7 @@ https://github.com/certping-labs/certping
 
 ----------------------------------------------------------------------------------------------------
 Red Hat build of OpenJDK 25 on Red Hat Universal Base Image 9 (base image)
-  Version: 25.0.4.1
+  Version: 25.0.5 (package java-25-openjdk 25.0.5.0.8-1.0.el9)
   License: GPL-2.0-only WITH Classpath-exception-2.0
   Location: registry.access.redhat.com/ubi9/openjdk-25-runtime
 
@@ -25,7 +26,7 @@ contains are in /usr/lib/jvm/java-25-openjdk/legal/ in this image, and the licen
 operating system packages are in /usr/share/licenses/. The base image is redistributed under the
 Red Hat Universal Base Image End User License Agreement:
 https://www.redhat.com/licenses/EULA_Red_Hat_Universal_Base_Image_English_20190422.pdf
-Source code: https://openjdk.org and the source RPMs Red Hat publishes for UBI.
+Source code: see section 7.
 
 ----------------------------------------------------------------------------------------------------
 OpenTelemetry Java agent
@@ -340,9 +341,13 @@ Java libraries in /app/app.jar (BOOT-INF/lib) (179)
 ch.qos.logback:logback-classic 1.6.6
     EPL-2.0 (elected from EPL-2.0 OR LGPL-2.1-or-later)
     http://logback.qos.ch
+    Source code, available under the EPL-2.0: https://github.com/qos-ch/logback (tag v_1.6.6)
+      and https://repo1.maven.org/maven2/ch/qos/logback/logback-classic/1.6.6/logback-classic-1.6.6-sources.jar
 ch.qos.logback:logback-core 1.6.6
     EPL-2.0 (elected from EPL-2.0 OR LGPL-2.1-or-later)
     http://logback.qos.ch
+    Source code, available under the EPL-2.0: https://github.com/qos-ch/logback (tag v_1.6.6)
+      and https://repo1.maven.org/maven2/ch/qos/logback/logback-core/1.6.6/logback-core-1.6.6-sources.jar
 com.azure:azure-communication-common 1.5.1
     MIT
     https://github.com/Azure/azure-sdk-for-java
@@ -598,6 +603,8 @@ jakarta.activation:jakarta.activation-api 2.1.4
 jakarta.annotation:jakarta.annotation-api 3.0.0
     EPL-2.0 (elected from EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0)
     https://projects.eclipse.org/projects/ee4j.ca
+    Source code, available under the EPL-2.0: https://github.com/jakartaee/common-annotations-api (tag 3.0.0)
+      and https://repo1.maven.org/maven2/jakarta/annotation/jakarta.annotation-api/3.0.0/jakarta.annotation-api-3.0.0-sources.jar
 jakarta.inject:jakarta.inject-api 2.0.1
     Apache-2.0
     https://github.com/eclipse-ee4j/injection-api
@@ -610,6 +617,8 @@ jakarta.persistence:jakarta.persistence-api 3.2.0
 jakarta.transaction:jakarta.transaction-api 2.0.1
     EPL-2.0 (elected from EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0)
     https://projects.eclipse.org/projects/ee4j.jta
+    Source code, available under the EPL-2.0: https://github.com/eclipse-ee4j/jta-api (tag 2.0.1)
+      and https://repo1.maven.org/maven2/jakarta/transaction/jakarta.transaction-api/2.0.1/jakarta.transaction-api-2.0.1-sources.jar
 jakarta.xml.bind:jakarta.xml.bind-api 4.0.5
     EDL-1.0
     https://github.com/jakartaee/jaxb-api
@@ -637,6 +646,8 @@ org.apache.tomcat.embed:tomcat-embed-websocket 11.0.27
 org.aspectj:aspectjweaver 1.9.27
     EPL-2.0
     https://www.eclipse.org/aspectj/
+    Source code, available under the EPL-2.0: https://github.com/eclipse/org.aspectj (tag V1_9_27)
+      and https://repo1.maven.org/maven2/org/aspectj/aspectjweaver/1.9.27/aspectjweaver-1.9.27-sources.jar
 org.attoparser:attoparser 2.0.10.RELEASE
     Apache-2.0
     https://www.attoparser.org
@@ -1100,6 +1111,20 @@ package in the Spring Framework library, distributed by VMware, Inc:
   * Copyright 2002-2019 the original author or authors.
   * License: Apache License v2.0
   * Homepage: https://spring.io/projects/spring-framework
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/NOTICE.harmony.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/NOTICE.harmony.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/NOTICE.harmony.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/NOTICE.harmony.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/NOTICE.harmony.txt)
+----------------------------------------------------------------------------------------------------
+Apache Harmony
+
+Copyright 2006, 2010 The Apache Software Foundation.
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
 
 ----------------------------------------------------------------------------------------------------
 From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/NOTICE.txt)
@@ -2623,6 +2648,623 @@ You may obtain a copy of the License at:
 http://www.apache.org/licenses/LICENSE-2.0
 
 ----------------------------------------------------------------------------------------------------
+From: io.grpc:grpc-netty-shaded 1.85.1 (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-tcnative-boringssl-static:linux-aarch_64 2.0.85.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-tcnative-boringssl-static:linux-x86_64 2.0.85.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-tcnative-boringssl-static:osx-aarch_64 2.0.85.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-tcnative-boringssl-static:osx-x86_64 2.0.85.Final (META-INF/license/LICENSE.boringssl.txt)
+      io.netty:netty-tcnative-boringssl-static:windows-x86_64 2.0.85.Final (META-INF/license/LICENSE.boringssl.txt)
+----------------------------------------------------------------------------------------------------
+Licenses for support code
+-------------------------
+
+Parts of the TLS test suite are under the Go license. This code is not included
+in BoringSSL (i.e. libcrypto and libssl) when compiled, however, so
+distributing code linked against BoringSSL does not trigger this license:
+
+Copyright (c) 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.aalto-xml.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.aalto-xml.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.aalto-xml.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.aalto-xml.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.aalto-xml.txt)
+----------------------------------------------------------------------------------------------------
+This copy of Aalto XML processor is licensed under the
+Apache (Software) License, version 2.0 ("the License").
+See the License for details about distribution rights, and the
+specific rights regarding derivate works.
+
+You may obtain a copy of the License at:
+
+https://www.apache.org/licenses/
+
+A copy is also included with both the downloadable source code package
+and jar that contains class bytecodes, as file "ASL 2.0". In both cases,
+that file should be located next to this file: in source distribution
+the location should be "release-notes/asl"; and in jar "META-INF/"
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.base64.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.base64.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.base64.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.base64.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.base64.txt)
+----------------------------------------------------------------------------------------------------
+The person or persons who have associated work with this document (the
+"Dedicator" or "Certifier") hereby either (a) certifies that, to the best of
+his knowledge, the work of authorship identified is in the public domain of
+the country from which the work is published, or (b) hereby dedicates whatever
+copyright the dedicators holds in the work of authorship identified below (the
+"Work") to the public domain. A certifier, moreover, dedicates any copyright
+interest he may have in the associated work, and for these purposes, is
+described as a "dedicator" below.
+
+A certifier has taken reasonable steps to verify the copyright status of this
+work. Certifier recognizes that his good faith efforts may not shield him from
+liability if in fact the work certified is not in the public domain.
+
+Dedicator makes this dedication for the benefit of the public at large and to
+the detriment of the Dedicator's heirs and successors. Dedicator intends this
+dedication to be an overt act of relinquishment in perpetuate of all present
+and future rights under copyright law, whether vested or contingent, in the
+Work. Dedicator understands that such relinquishment of all rights includes
+the relinquishment of all rights to enforce (by lawsuit or otherwise) those
+copyrights in the Work.
+
+Dedicator recognizes that, once placed in the public domain, the Work may be
+freely reproduced, distributed, transmitted, used, modified, built upon, or
+otherwise exploited by anyone for any purpose, commercial or non-commercial,
+and in any way, including by methods that have not yet been invented or
+conceived.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.bouncycastle.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.bouncycastle.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.bouncycastle.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.bouncycastle.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.bouncycastle.txt)
+----------------------------------------------------------------------------------------------------
+The MIT License (MIT)
+
+Copyright (c) 2000 - 2013 The Legion of the Bouncy Castle Inc.
+                          (https://www.bouncycastle.org)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.compress-lzf.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.compress-lzf.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.compress-lzf.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.compress-lzf.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.compress-lzf.txt)
+----------------------------------------------------------------------------------------------------
+Copyright 2009-2010 Ning, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License at https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations under
+the License.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.dnsinfo.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.dnsinfo.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.dnsinfo.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.dnsinfo.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.dnsinfo.txt)
+----------------------------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004-2006, 2008, 2009, 2011 Apple Inc. All rights reserved.
+ *
+ * @APPLE_LICENSE_HEADER_START@
+ *
+ * This file contains Original Code and/or Modifications of Original Code
+ * as defined in and that are subject to the Apple Public Source License
+ * Version 2.0 (the 'License'). You may not use this file except in
+ * compliance with the License. Please obtain a copy of the License at
+ * https://www.opensource.apple.com/apsl/ and read it before using this
+ * file.
+ *
+ * The Original Code and all software distributed under the License are
+ * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ * INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
+ * Please see the License for the specific language governing rights and
+ * limitations under the License.
+ *
+ * @APPLE_LICENSE_HEADER_END@
+ */
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.hyper-hpack.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.hyper-hpack.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.hyper-hpack.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.hyper-hpack.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.hyper-hpack.txt)
+----------------------------------------------------------------------------------------------------
+The MIT License (MIT)
+
+Copyright (c) 2014 Cory Benfield
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jbzip2.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.jbzip2.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jbzip2.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.jbzip2.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.jbzip2.txt)
+----------------------------------------------------------------------------------------------------
+Copyright (c) 2010-2011 Matthew J. Francis and Contributors of the jbzip2 Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jfastlz.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.jfastlz.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jfastlz.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.jfastlz.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.jfastlz.txt)
+----------------------------------------------------------------------------------------------------
+The MIT License
+
+Copyright (c) 2009 William Kinney
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jsr166y.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.jsr166y.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jsr166y.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.jsr166y.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.jsr166y.txt)
+----------------------------------------------------------------------------------------------------
+The person or persons who have associated work with this document (the
+"Dedicator" or "Certifier") hereby either (a) certifies that, to the best of
+his knowledge, the work of authorship identified is in the public domain of
+the country from which the work is published, or (b) hereby dedicates whatever
+copyright the dedicators holds in the work of authorship identified below (the
+"Work") to the public domain. A certifier, moreover, dedicates any copyright
+interest he may have in the associated work, and for these purposes, is
+described as a "dedicator" below.
+
+A certifier has taken reasonable steps to verify the copyright status of this
+work. Certifier recognizes that his good faith efforts may not shield him from
+liability if in fact the work certified is not in the public domain.
+
+Dedicator makes this dedication for the benefit of the public at large and to
+the detriment of the Dedicator's heirs and successors. Dedicator intends this
+dedication to be an overt act of relinquishment in perpetuity of all present
+and future rights under copyright law, whether vested or contingent, in the
+Work. Dedicator understands that such relinquishment of all rights includes
+the relinquishment of all rights to enforce (by lawsuit or otherwise) those
+copyrights in the Work.
+
+Dedicator recognizes that, once placed in the public domain, the Work may be
+freely reproduced, distributed, transmitted, used, modified, built upon, or
+otherwise exploited by anyone for any purpose, commercial or non-commercial,
+and in any way, including by methods that have not yet been invented or
+conceived.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jzlib.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.jzlib.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.jzlib.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.jzlib.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.jzlib.txt)
+----------------------------------------------------------------------------------------------------
+Copyright (c) 2000,2001,2002,2003,2004 ymnk, JCraft,Inc. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the distribution.
+
+  3. The names of the authors may not be used to endorse or promote products
+     derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL JCRAFT,
+INC. OR ANY CONTRIBUTORS TO THIS SOFTWARE BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.libdivsufsort.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.libdivsufsort.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.libdivsufsort.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.libdivsufsort.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.libdivsufsort.txt)
+----------------------------------------------------------------------------------------------------
+Copyright (c) 2003-2008 Yuta Mori All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.nghttp2-hpack.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.nghttp2-hpack.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.nghttp2-hpack.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.nghttp2-hpack.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.nghttp2-hpack.txt)
+----------------------------------------------------------------------------------------------------
+The MIT License
+
+Copyright (c) 2012, 2014, 2015, 2016 Tatsuhiro Tsujikawa
+Copyright (c) 2012, 2014, 2015, 2016 nghttp2 contributors
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.protobuf.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.protobuf.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.protobuf.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.protobuf.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.protobuf.txt)
+----------------------------------------------------------------------------------------------------
+Protocol Buffers - Google's data interchange format
+Copyright 2013 Google Inc.  All rights reserved.
+https://developers.google.com/protocol-buffers/
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+    * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+    * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Code generated by the Protocol Buffer compiler is owned by the owner
+of the input file used when generating it.  This code is not
+standalone and requires a support library to be linked with it.  This
+support library is itself covered by the above license.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.quiche.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.quiche.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.quiche.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.quiche.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.quiche.txt)
+----------------------------------------------------------------------------------------------------
+Copyright (C) 2018-2019, Cloudflare, Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.slf4j.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.slf4j.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.slf4j.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.slf4j.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.slf4j.txt)
+----------------------------------------------------------------------------------------------------
+/*
+ * Copyright (c) 2004-2007 QOS.ch
+ * All rights reserved.
+ *
+ * Permission is hereby granted, free  of charge, to any person obtaining
+ * a  copy  of this  software  and  associated  documentation files  (the
+ * "Software"), to  deal in  the Software without  restriction, including
+ * without limitation  the rights to  use, copy, modify,  merge, publish,
+ * distribute,  sublicense, and/or sell  copies of  the Software,  and to
+ * permit persons to whom the Software  is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The  above  copyright  notice  and  this permission  notice  shall  be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE  SOFTWARE IS  PROVIDED  "AS  IS", WITHOUT  WARRANTY  OF ANY  KIND,
+ * EXPRESS OR  IMPLIED, INCLUDING  BUT NOT LIMITED  TO THE  WARRANTIES OF
+ * MERCHANTABILITY,    FITNESS    FOR    A   PARTICULAR    PURPOSE    AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+ * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE,  ARISING FROM, OUT OF OR IN CONNECTION
+ * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.snappy.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.snappy.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.snappy.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.snappy.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.snappy.txt)
+----------------------------------------------------------------------------------------------------
+Copyright 2011, Google Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+* Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+* Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.webbit.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.webbit.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.webbit.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.webbit.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.webbit.txt)
+----------------------------------------------------------------------------------------------------
+(BSD License: https://www.opensource.org/licenses/bsd-license)
+
+Copyright (c) 2011, Joe Walnes, Aslak Hellesøy and contributors
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or
+without modification, are permitted provided that the
+following conditions are met:
+
+* Redistributions of source code must retain the above
+  copyright notice, this list of conditions and the
+  following disclaimer.
+
+* Redistributions in binary form must reproduce the above
+  copyright notice, this list of conditions and the
+  following disclaimer in the documentation and/or other
+  materials provided with the distribution.
+
+* Neither the name of the Webbit nor the names of
+  its contributors may be used to endorse or promote products
+  derived from this software without specific prior written
+  permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
+From: io.netty:netty-codec-native-quic:linux-aarch_64 4.2.20.Final (META-INF/license/LICENSE.zstd-jni.txt)
+      io.netty:netty-codec-native-quic:linux-x86_64 4.2.20.Final (META-INF/license/LICENSE.zstd-jni.txt)
+      io.netty:netty-codec-native-quic:osx-aarch_64 4.2.20.Final (META-INF/license/LICENSE.zstd-jni.txt)
+      io.netty:netty-codec-native-quic:osx-x86_64 4.2.20.Final (META-INF/license/LICENSE.zstd-jni.txt)
+      io.netty:netty-codec-native-quic:windows-x86_64 4.2.20.Final (META-INF/license/LICENSE.zstd-jni.txt)
+----------------------------------------------------------------------------------------------------
+Zstd-jni: JNI bindings to Zstd Library
+
+Copyright (c) 2015-present, Luben Karavelov/ All rights reserved.
+
+BSD License
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice, this
+  list of conditions and the following disclaimer in the documentation and/or
+  other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
 From: jakarta.activation:jakarta.activation-api 2.1.4 (META-INF/LICENSE.md)
       org.eclipse.angus:angus-activation 2.0.3 (META-INF/LICENSE.md)
       org.glassfish.jaxb:jaxb-core 4.0.9 (META-INF/LICENSE.md)
@@ -2689,6 +3331,37 @@ From: jakarta.xml.bind:jakarta.xml.bind-api 4.0.5 (META-INF/LICENSE.md)
     LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
     NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
+From: net.bytebuddy:byte-buddy 1.18.17 (META-INF/licenses/ASM)
+----------------------------------------------------------------------------------------------------
+ASM: a very small and fast Java bytecode manipulation framework
+Copyright (c) 2000-2011 INRIA, France Telecom
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in the
+  documentation and/or other materials provided with the distribution.
+3. Neither the name of the copyright holders nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+THE POSSIBILITY OF SUCH DAMAGE.
 
 ----------------------------------------------------------------------------------------------------
 From: org.apache.tomcat.embed:tomcat-embed-core 11.0.27 (META-INF/LICENSE)
@@ -3624,6 +4297,60 @@ BSD-2-Clause
 * com.ongres.stringprep:stringprep:2.2
 
 ----------------------------------------------------------------------------------------------------
+From: org.postgresql:postgresql 42.7.14 (META-INF/licenses/com.ongres.scram/scram-client-3.2/META-INF/LICENSE)
+      org.postgresql:postgresql 42.7.14 (META-INF/licenses/com.ongres.scram/scram-common-3.2/META-INF/LICENSE)
+----------------------------------------------------------------------------------------------------
+Copyright (c) 2017 OnGres, Inc.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
+From: org.postgresql:postgresql 42.7.14 (META-INF/licenses/com.ongres.stringprep/saslprep-2.2/META-INF/LICENSE)
+      org.postgresql:postgresql 42.7.14 (META-INF/licenses/com.ongres.stringprep/stringprep-2.2/META-INF/LICENSE)
+----------------------------------------------------------------------------------------------------
+Copyright (c) 2019 OnGres, Inc.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----------------------------------------------------------------------------------------------------
 From: org.slf4j:jul-to-slf4j 2.0.20 (META-INF/LICENSE.txt)
 ----------------------------------------------------------------------------------------------------
 Copyright (c) 2004-2022 QOS.ch Sarl (Switzerland)
@@ -4524,3 +5251,32 @@ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIG
 HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+====================================================================================================
+7. Source code
+====================================================================================================
+Some components of this image are licensed under a version of the GNU General Public License
+(GPL) or the GNU Lesser General Public License (LGPL):
+
+  - OpenJDK 25.0.5, the Red Hat build in package java-25-openjdk 25.0.5.0.8-1.0.el9 (GPL-2.0 with
+    the Classpath Exception)
+  - the operating system packages of the base image licensed under the GPL or the LGPL; list them
+    with: rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}: %{LICENSE}\n'
+
+Written offer: for at least three years after Seaionl Inc. last distributes this image, Seaionl
+Inc. will give any third party, on request, a complete machine-readable copy of the corresponding
+source code of these components, to be distributed under the terms of the license of each
+component, on a medium customarily used for software interchange, for a charge no more than its
+cost of physically performing source distribution. Send requests to legal@certping.com, naming
+the image and its version or digest. This offer is valid to anyone in receipt of this
+information.
+
+Where upstream publishes the source:
+
+  - Base image: registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24-3.1793323806 (sha256:2ddacad5332f4e481353668f210623f7e7420f1561515f5686e5abd33cd6d38f)
+  - OpenJDK: https://github.com/openjdk/jdk25u (tag jdk-25.0.5+8), from which Red Hat builds the
+    source RPM java-25-openjdk-25.0.5.0.8-1.0.el9.src.rpm
+  - Base image packages: the UBI 9 source repositories,
+    https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/<arch>/{baseos,appstream}/source/SRPMS/
+    (they keep only the current build of each package; the builds in this image are covered by
+    the offer above)

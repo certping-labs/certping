@@ -626,7 +626,10 @@ jobs:
       - name: Package and push
         run: |
           for chart in certping certping-agent; do
+            cp LICENSE NOTICE "deploy/charts/$chart/"
             helm package "deploy/charts/$chart" --version "$VERSION" --app-version "$VERSION" --destination dist
+            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/LICENSE"
+            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/NOTICE"
             helm push "dist/$chart-$VERSION.tgz" "$REGISTRY"
           done
 
