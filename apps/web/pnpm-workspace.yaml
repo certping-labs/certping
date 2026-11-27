@@ -4,6 +4,17 @@
 packages:
   - "."
 
+# Install a newly published version only once it is 3 days old (default 1),
+# and refuse a version whose publish trust is weaker than an earlier one's.
+minimumReleaseAge: 4320
+trustPolicy: no-downgrade
+# Published by their usual maintainers without the provenance earlier versions
+# carried (checked 2026-11-27); exact versions only, so a newer one is checked.
+trustPolicyExclude:
+  - eslint-import-resolver-typescript@3.10.1
+  - solid-js@1.9.20
+  - undici-types@6.21.0
+
 allowBuilds:
   # Ships prebuilt binaries; its install script only rebuilds them, so it is not run.
   "@parcel/watcher": false
