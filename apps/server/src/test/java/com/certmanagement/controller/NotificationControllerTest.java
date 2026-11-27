@@ -20,6 +20,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,7 +42,7 @@ class NotificationControllerTest {
         when(proxyService.get(eq(Paths.NOTIFICATIONS_BASE), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(proxied);
 
-        ResponseEntity<String> response = controller.getNotifications(2, 25, "UNREAD", null);
+        ResponseEntity<String> response = controller.getNotifications(2, 25, "FAILED", null);
 
         assertThat(response).isSameAs(proxied);
 
@@ -51,7 +52,7 @@ class NotificationControllerTest {
         Map<String, String> params = captor.getValue();
         assertThat(params).containsEntry("page", "2");
         assertThat(params).containsEntry("size", "25");
-        assertThat(params).containsEntry("status", "UNREAD");
+        assertThat(params).containsEntry("status", "FAILED");
         assertThat(params).containsEntry("organizationId", "10");
     }
 
@@ -70,5 +71,15 @@ class NotificationControllerTest {
         Map<String, String> params = captor.getValue();
         assertThat(params).doesNotContainKey("page");
         assertThat(params).doesNotContainKey("organizationId");
+    }
+
+    @Test
+    void getNotifications_refusesAnUnknownStatus() {
+        GatewayRequestContext.set(1, "10", "req", "u@example.com");
+
+        ResponseEntity<String> response = controller.getNotifications(null, null, "SENT&organizationId=7", null);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        verifyNoInteractions(proxyService);
     }
 }

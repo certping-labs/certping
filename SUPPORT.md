@@ -27,7 +27,9 @@ Seaionl Inc., the company behind CertPing, offers:
   in your network.
 
 Contact us through [certping.com/enterprise](https://www.certping.com/enterprise/) or at
-`sales@certping.com`. Paying never unlocks or removes anything in this repository: the open
+`sales@certping.com`. Paid services are covered by the
+[CertPing terms](https://www.certping.com/terms/) and
+[privacy policy](https://www.certping.com/privacy-policy/). Paying never unlocks or removes anything in this repository: the open
 edition has no limits.
 
 ## What to include

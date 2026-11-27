@@ -4,7 +4,7 @@
 "use client";
 
 import React, { useId, useMemo } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CircleNotchIcon } from "@phosphor-icons/react";
@@ -163,7 +163,7 @@ function EditUserForm({
 }: EditUserFormProps) {
   const saveBlockedId = useId();
   const form = useForm<EditUserValues>({
-    resolver: zodResolver(editUserSchema),
+    resolver: zodResolver(editUserSchema) as Resolver<EditUserValues>,
     mode: "onBlur",
     reValidateMode: "onChange",
     defaultValues: {

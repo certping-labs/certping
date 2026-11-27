@@ -209,7 +209,9 @@ restored. Commands for each kit are in [operations.md](operations.md#back-up-and
 What a self-hosted CertPing sends out of your environment, what it never
 sends, and the settings that control it. This page describes the open-source
 product in this repository as of the code it ships with; the hosted CertPing
-service at certping.com has its own privacy policy, published with that service.
+service at certping.com has its own
+[privacy policy](https://www.certping.com/privacy-policy/) and
+[terms](https://www.certping.com/terms/).
 
 ### Summary
 

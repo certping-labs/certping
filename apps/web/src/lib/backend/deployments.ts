@@ -17,7 +17,7 @@ import type {
 } from "@/types/cert-manager";
 
 const DEPLOYMENTS_PAGE_SIZE = 100;
-const jsonObjectSchema = z.record(z.unknown());
+const jsonObjectSchema = z.record(z.string(), z.unknown());
 
 interface DeploymentApiRecord {
   id: number;
