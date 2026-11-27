@@ -246,6 +246,12 @@ Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md). Each c
 [Apache License 2.0](LICENSE). Copyright Seaionl Inc. and CertPing contributors. CertPing® is a
 registered trademark of Seaionl Inc. ([TRADEMARKS.md](TRADEMARKS.md)).
 
+The hosted service at certping.com and Seaionl's paid offerings are covered by the
+[CertPing terms](https://www.certping.com/terms/) and
+[privacy policy](https://www.certping.com/privacy-policy/). The code in this repository is
+licensed under Apache 2.0 and is not bound by those terms. What a self-hosted install sends out
+of your network is described in [docs/self-hosting.md](docs/self-hosting.md#privacy-and-telemetry).
+
 CertPing is built by the CertPing team at Seaionl Inc. Created by Chennarao Vemula, project lead
 and lead architect ([@chenna-certping](https://github.com/chenna-certping), personal
 [@cvemula1](https://github.com/cvemula1), chenna@certping.com), with Sameera Khatoon, Izaan Anwar
