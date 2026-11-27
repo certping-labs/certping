@@ -55,7 +55,11 @@ has none.
 The libvips files come from the source tarballs that sharp-libvips' `build/posix.sh` downloads
 (at its release tag) for each library: the top-level license and copyright files, plus those of
 code a library bundles. When sharp-libvips changes, collect them again for the versions in its
-`versions.json`; the generator fails if a library has none.
+`versions.json`; the generator fails if a library has none. `sources.txt` in the same folder lists
+every archive and patch that `build/posix.sh` downloads, and the sharp-libvips release itself, with
+its SHA-256; the Release workflow publishes them as the source of libvips. Update it with the
+folder (download each URL, record its SHA-256); the generator fails if a library in
+`versions.json` has no line.
 
 The script runs Maven offline by default; set `MVN_OFFLINE=` to let it download. It needs JDK
 25, Maven, Node.js 24 and pnpm. Versions of runtime components (OpenJDK, Node.js, PostgreSQL,
@@ -67,7 +71,9 @@ the generator fails when a Dockerfile pins another one.
 ## Source code
 
 Section 7 of each `THIRD-PARTY-NOTICES.txt` names the components of that image licensed under
-the GPL or the LGPL, offers their complete corresponding source code in writing (on request to
+the GPL or the LGPL, says where each release publishes their source next to the image
+(`ghcr.io/certping-labs/<image>-source:<version>`, see "Corresponding source" in
+`.github/RELEASING.md`), offers their complete corresponding source code in writing (on request to
 legal@certping.com, for at least three years after the image was last distributed) and lists
 where upstream publishes the source of the versions in the image. EPL-2.0 libraries name their
 source repository and tag and their `-sources.jar` in section 2.

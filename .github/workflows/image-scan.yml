@@ -1,0 +1,91 @@
+# Copyright Seaionl Inc. and CertPing contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Image scan
+
+# Weekly vulnerability scan of the images of the latest published release, pulled from GHCR by the
+# digests in its release-metadata.json. A release is scanned when it is built (release.yml); this
+# finds what has been disclosed since, in the operating system packages and the application
+# dependencies, and reports it in the Security tab (code scanning, one category per image and
+# platform). Same policy and exceptions as the release scan (.github/scripts/image-scan.sh), always
+# report-only: it never fails on findings. trivy is downloaded and checked against a pinned
+# SHA-256, as in security.yml.
+
+on:
+  schedule:
+    - cron: "41 6 * * 1" # Mondays 06:41 UTC, after the Security workflow's weekly run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read # read the latest release and its metadata
+      packages: read # pull the images from GHCR
+      security-events: write # upload the SARIF reports
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [all-in-one, web, server, agent, notifier]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Image of the latest published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" --jq '[.[] | select(.draft | not)][0].tag_name // empty')
+          if [ -z "$tag" ]; then
+            echo "::notice::No published release yet; nothing to scan."
+            exit 0
+          fi
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern release-metadata.json
+          ref=$(jq -r --arg app "$IMAGE" '.images.refs[] | select(.app == $app) | .ref' release-metadata.json)
+          case "$ref" in
+            *@sha256:*) ;;
+            *) echo "::error::release-metadata.json of $tag has no image $IMAGE pinned by digest"; exit 1 ;;
+          esac
+          echo "Scanning $ref from release $tag"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: steps.release.outputs.ref != ''
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install trivy 0.76.1 (checksum verified)
+        if: steps.release.outputs.ref != ''
+        run: |
+          curl -fsSLo trivy.tgz https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz
+          echo "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+      - name: Scan both platforms
+        if: steps.release.outputs.ref != ''
+        env:
+          REF: ${{ steps.release.outputs.ref }}
+          IMAGE: ${{ matrix.image }}
+        run: .github/scripts/image-scan.sh --sarif "$IMAGE" sarif "linux/amd64=$REF" "linux/arm64=$REF"
+      - name: Upload (linux/amd64)
+        if: steps.release.outputs.ref != ''
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: sarif/trivy-${{ matrix.image }}-linux-amd64.sarif
+          category: image-${{ matrix.image }}-linux-amd64
+      - name: Upload (linux/arm64)
+        if: steps.release.outputs.ref != ''
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: sarif/trivy-${{ matrix.image }}-linux-arm64.sarif
+          category: image-${{ matrix.image }}-linux-arm64

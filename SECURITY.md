@@ -173,7 +173,10 @@ report it to `security@certping.com` and say so; the maintainers will route it.
 ## Security measures in this repository
 
 [.github/RELEASING.md](.github/RELEASING.md) describes signed images, SBOMs,
-provenance and how to verify them.
+provenance, the vulnerability scan every image passes before it is released,
+and how to verify them. Each week the Image scan workflow scans the images of
+the latest release again and reports new findings in the repository's Security
+tab.
 [docs/self-hosting.md#privacy-and-telemetry](docs/self-hosting.md#privacy-and-telemetry) describes what a self-hosted installation
 sends out and what it does not.
 [docs/architecture.md#key-custody-and-trust](docs/architecture.md#key-custody-and-trust) describes where private keys are

@@ -8,11 +8,14 @@ name: Release
 # v0.1.0-rc.1. It checks that CI and the Security workflow already passed for
 # that exact commit, tests the commit again, builds the four application images
 # for linux/amd64 and linux/arm64 on native runners, assembles the all-in-one
-# image from them by digest, writes a CycloneDX SBOM per image, a
-# release-metadata.json and a SHA256SUMS file, signs and attests what it can
-# (public repository only), and opens a DRAFT GitHub release for review. No tag
-# exists until a maintainer publishes the draft by hand; publishing creates the
-# tag on the release commit. See .github/RELEASING.md.
+# image from them by digest, scans every image for vulnerabilities before it is
+# tagged, publishes the corresponding source of each image's operating system
+# packages and libvips next to it, writes a CycloneDX SBOM per image, the
+# Compose kit and Helm charts, a release-metadata.json and a SHA256SUMS file,
+# signs and attests what it can (public repository only), and opens a DRAFT
+# GitHub release for review. No tag exists until a maintainer publishes the
+# draft by hand; publishing creates the tag on the release commit. See
+# .github/RELEASING.md.
 #
 # Approval gates (GitHub environments):
 #   release         every run, before anything is built (the `approve` job)
@@ -29,8 +32,9 @@ name: Release
 #   - A public repository: native arm64 runners (ubuntu-24.04-arm), keyless
 #     signing and artifact attestations are free only on public repositories.
 #   - GHCR: after the first push, set each package (certping, certping-web,
-#     certping-server, certping-agent, certping-notifier) to public and link it
-#     to this repository.
+#     certping-server, certping-agent, certping-notifier, the five matching
+#     <image>-source packages and the two charts) to public and link it to this
+#     repository.
 
 on:
   workflow_dispatch:
@@ -330,14 +334,128 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # Fixable HIGH and CRITICAL vulnerabilities in the operating system packages and application
+  # dependencies of each platform image, pulled by digest before anything is tagged. Settings,
+  # exceptions and mode (blocking or report-only) are the Security workflow's, from
+  # .github/trivy.yaml. A dry run pushes nothing, so there is nothing to scan.
+  scan:
+    name: Scan ${{ matrix.app }}
+    needs: [validate, build]
+    if: always() && inputs.publish_images && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read # pull the platform images by digest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [web, server, agent, notifier]
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/certping-${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-${{ matrix.app }}-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install trivy 0.76.1 (checksum verified)
+        run: |
+          curl -fsSLo trivy.tgz https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz
+          echo "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+      - name: Scan both platforms
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          .github/scripts/image-scan.sh "$APP" scan \
+            "linux/amd64=$IMAGE@$(cat digests/amd64)" "linux/arm64=$IMAGE@$(cat digests/arm64)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: release-scan-${{ matrix.app }}
+          path: scan/
+          retention-days: 14
+          if-no-files-found: error
+
+  # The corresponding source of each image's operating system packages (and of libvips in the web
+  # image), published next to the image as ghcr.io/<owner>/certping-<app>-source:<version>
+  # before the image is tagged, so no tagged image exists without it (GPL-3.0 section 6(d),
+  # LGPL-3.0 section 4). The package list comes from the scan reports.
+  source:
+    name: Source of ${{ matrix.app }}
+    needs: [validate, build, scan]
+    if: always() && inputs.publish_images && needs.scan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write # push certping-<app>-source
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [web, server, agent, notifier]
+    env:
+      SOURCE_REF: ghcr.io/${{ github.repository_owner }}/certping-${{ matrix.app }}-source:${{ needs.validate.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-scan-${{ matrix.app }}
+          path: scan
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install oras 1.3.6 (checksum verified)
+        run: |
+          curl -fsSLo oras.tgz https://github.com/oras-project/oras/releases/download/v1.3.6/oras_1.3.6_linux_amd64.tar.gz
+          echo "66fb0ad7206f3f6fa77ed5b552049d364ccf4b50b1684554f731f76302b52ca0  oras.tgz" | sha256sum -c -
+          tar -xzf oras.tgz oras
+      # The source RPMs' signatures are checked with rpm and Red Hat's keys in the base image the
+      # Dockerfile pins by digest: the final images have had their package managers removed.
+      - name: Collect the source
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          flags=()
+          if [ "$APP" = "web" ]; then flags+=(--libvips); fi
+          base=$(awk '$1 == "FROM" && $2 ~ /^registry\.access\.redhat\.com\/.*@sha256:/ { print $2 }' "apps/$APP/Dockerfile" | tail -n1)
+          VERIFY_IMAGE="$base" .github/scripts/image-source.sh "${flags[@]}" source scan/trivy-*.json
+      - name: Push the source
+        env:
+          APP: ${{ matrix.app }}
+          VERSION: ${{ needs.validate.outputs.image_tag }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: .github/scripts/image-source-push.sh source "$SOURCE_REF" "certping-$APP" "source-$APP.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-source-${{ matrix.app }}
+          path: source-${{ matrix.app }}.txt
+          retention-days: 14
+          if-no-files-found: error
+
   publish:
     name: Publish ${{ matrix.app }}
-    needs: [validate, sbom, build]
+    needs: [validate, sbom, build, source]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
     if: >-
       always() && inputs.publish_images &&
-      needs.sbom.result == 'success' && needs.build.result == 'success'
+      needs.sbom.result == 'success' && needs.build.result == 'success' && needs.source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -417,7 +535,8 @@ jobs:
     name: Build the all-in-one image
     # Assembled from the four application images just pushed, by digest, so it carries the same
     # layers. Only when images are published: without a push there is nothing to assemble from.
-    # Its own steps are package installs on Ubuntu, so the arm64 half runs under QEMU.
+    # Its own steps are package installs on Ubuntu, so the arm64 half runs under QEMU. Pushed by
+    # digest only: all-in-one-publish tags it once it is scanned and its source is published.
     needs: [validate, publish]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
@@ -427,11 +546,10 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
-      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/certping
-      IS_PUBLIC: ${{ github.event.repository.private == false }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -459,22 +577,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Build and push
+      - name: Build and push by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: deploy/all-in-one/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
           provenance: false
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             CERTPING_VERSION=${{ needs.validate.outputs.image_tag }}
             SERVER_IMAGE=${{ steps.refs.outputs.server }}
             WEB_IMAGE=${{ steps.refs.outputs.web }}
             AGENT_IMAGE=${{ steps.refs.outputs.agent }}
             NOTIFIER_IMAGE=${{ steps.refs.outputs.notifier }}
-          tags: ${{ env.IMAGE }}:${{ needs.validate.outputs.image_tag }}
           labels: |
             org.opencontainers.image.title=certping
             org.opencontainers.image.description=CertPing all-in-one: server, web, notifier, agent, PostgreSQL, Valkey and Caddy in one container
@@ -483,16 +600,126 @@ jobs:
             org.opencontainers.image.revision=${{ needs.validate.outputs.sha }}
             org.opencontainers.image.version=${{ needs.validate.outputs.image_tag }}
             org.opencontainers.image.vendor=Seaionl Inc.
-      - name: Record image digest
+
+  scan-all-in-one:
+    name: Scan the all-in-one image
+    needs: [validate, all-in-one]
+    if: always() && needs.all-in-one.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read # pull the image by digest
+    env:
+      REF: ghcr.io/${{ github.repository_owner }}/certping@${{ needs.all-in-one.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install trivy 0.76.1 (checksum verified)
+        run: |
+          curl -fsSLo trivy.tgz https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz
+          echo "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+      - name: Scan both platforms
+        run: .github/scripts/image-scan.sh all-in-one scan "linux/amd64=$REF" "linux/arm64=$REF"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: release-scan-all-in-one
+          path: scan/
+          retention-days: 14
+          if-no-files-found: error
+
+  source-all-in-one:
+    name: Source of the all-in-one image
+    needs: [validate, all-in-one, scan-all-in-one]
+    if: always() && needs.scan-all-in-one.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write # push certping-source
+    env:
+      SOURCE_REF: ghcr.io/${{ github.repository_owner }}/certping-source:${{ needs.validate.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-scan-all-in-one
+          path: scan
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install oras 1.3.6 (checksum verified)
+        run: |
+          curl -fsSLo oras.tgz https://github.com/oras-project/oras/releases/download/v1.3.6/oras_1.3.6_linux_amd64.tar.gz
+          echo "66fb0ad7206f3f6fa77ed5b552049d364ccf4b50b1684554f731f76302b52ca0  oras.tgz" | sha256sum -c -
+          tar -xzf oras.tgz oras
+      - name: Collect the source
+        run: .github/scripts/image-source.sh --libvips source scan/trivy-*.json
+      - name: Push the source
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: echo "$IMAGE@$DIGEST" > image-all-in-one.txt
+          VERSION: ${{ needs.validate.outputs.image_tag }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: .github/scripts/image-source-push.sh source "$SOURCE_REF" certping source-all-in-one.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-source-all-in-one
+          path: source-all-in-one.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  all-in-one-publish:
+    name: Publish the all-in-one image
+    needs: [validate, all-in-one, source-all-in-one]
+    if: always() && needs.source-all-in-one.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/certping
+      TAG: ${{ needs.validate.outputs.image_tag }}
+      DIGEST: ${{ needs.all-in-one.outputs.digest }}
+      IS_PUBLIC: ${{ github.event.repository.private == false }}
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # With one source that is an index, imagetools create copies it unchanged, so the tag points
+      # at the digest that was scanned.
+      - name: Tag the scanned image
+        run: |
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
+          tagged=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          if [ "$tagged" != "$DIGEST" ]; then
+            echo "::error::$IMAGE:$TAG is $tagged, not the scanned $DIGEST"; exit 1
+          fi
+          echo "$IMAGE@$DIGEST" > image-all-in-one.txt
       # The all-in-one adds PostgreSQL, Valkey, Caddy and Ubuntu packages to the application
       # layers, so its SBOM is read from the pushed image itself (the linux/amd64 variant).
       - name: Image SBOM (CycloneDX)
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
-          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          image: ${{ env.IMAGE }}@${{ env.DIGEST }}
           registry-username: ${{ github.actor }}
           registry-password: ${{ github.token }}
           format: cyclonedx-json
@@ -503,22 +730,20 @@ jobs:
         if: env.IS_PUBLIC == 'true'
       - name: Sign image (keyless, public repo only)
         if: env.IS_PUBLIC == 'true'
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
       - name: Build provenance attestation (public repo only)
         if: env.IS_PUBLIC == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ env.DIGEST }}
           push-to-registry: true
       - name: SBOM attestation for the image (public repo only)
         if: env.IS_PUBLIC == 'true'
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ env.DIGEST }}
           sbom-path: sbom-all-in-one.cdx.json
           push-to-registry: true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -535,12 +760,12 @@ jobs:
     # The manifest lists just published to GHCR, copied unchanged: the same digests, and on a public
     # repository their signatures and attestations too. Runs only when the DOCKERHUB_NAMESPACE
     # variable and the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets are set (.github/RELEASING.md).
-    needs: [validate, publish, all-in-one]
+    needs: [validate, publish, all-in-one-publish]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
     if: >-
       always() && inputs.publish_images && vars.DOCKERHUB_NAMESPACE != '' &&
-      needs.publish.result == 'success' && needs.all-in-one.result == 'success'
+      needs.publish.result == 'success' && needs.all-in-one-publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -592,17 +817,68 @@ jobs:
             cosign copy --only=sig,att --force "$(cat "$f")" "docker.io/$NAMESPACE/$name:$TAG"
           done
 
+  # The self-hosting kits as release assets: the Compose kit with the images pinned to this release
+  # (by digest when they were pushed) and both Helm charts with LICENSE and NOTICE. Runs on a dry
+  # run too, pinned by tag only then.
+  bundle:
+    name: Package the Compose kit and Helm charts
+    needs: [validate, build, publish]
+    if: >-
+      always() && needs.build.result == 'success' &&
+      (inputs.publish_images && needs.publish.result == 'success' || !inputs.publish_images)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.validate.outputs.image_tag }}
+      PUBLISH: ${{ inputs.publish_images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: inputs.publish_images
+        with:
+          pattern: release-image-*
+          merge-multiple: true
+          path: images
+      # GitHub-hosted runners ship helm.
+      - run: helm version
+      - name: Package the Helm charts
+        run: |
+          for chart in certping certping-agent; do
+            cp LICENSE NOTICE "deploy/charts/$chart/"
+            helm package "deploy/charts/$chart" --version "$VERSION" --app-version "$VERSION" --destination dist
+            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/LICENSE"
+            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/NOTICE"
+          done
+      - name: Package the Compose kit
+        run: |
+          refs=()
+          if [ "$PUBLISH" = "true" ]; then
+            for app in web server agent notifier; do refs+=("$app=$(cat "images/image-$app.txt")"); done
+          fi
+          .github/scripts/compose-bundle.sh "$VERSION" dist "${refs[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-bundle
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
   charts:
     name: Publish the Helm charts
-    # Both charts at the release version, pushed to GHCR as OCI artifacts. Their default image tag
-    # is the chart's appVersion, so a chart points at the images of the same release:
+    # The chart packages attached to the release, pushed to GHCR as OCI artifacts. Their default
+    # image tag is the chart's appVersion, so a chart points at the images of the same release:
     # helm install certping oci://ghcr.io/certping-labs/charts/certping --version <version>
-    needs: [validate, publish, all-in-one]
+    needs: [validate, bundle, all-in-one-publish]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
     if: >-
       always() && inputs.publish_images &&
-      needs.publish.result == 'success' && needs.all-in-one.result == 'success'
+      needs.bundle.result == 'success' && needs.all-in-one-publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -613,36 +889,34 @@ jobs:
       VERSION: ${{ needs.validate.outputs.image_tag }}
       ACTOR: ${{ github.actor }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          ref: ${{ needs.validate.outputs.sha }}
-          persist-credentials: false
+          name: release-bundle
+          path: dist
       # GitHub-hosted runners ship helm.
       - run: helm version
       - name: Log in to GHCR
         env:
           GH_TOKEN: ${{ github.token }}
         run: echo "$GH_TOKEN" | helm registry login ghcr.io --username "$ACTOR" --password-stdin
-      - name: Package and push
+      - name: Push
         run: |
           for chart in certping certping-agent; do
-            cp LICENSE NOTICE "deploy/charts/$chart/"
-            helm package "deploy/charts/$chart" --version "$VERSION" --app-version "$VERSION" --destination dist
-            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/LICENSE"
-            tar -tzf "dist/$chart-$VERSION.tgz" | grep -qx "$chart/NOTICE"
             helm push "dist/$chart-$VERSION.tgz" "$REGISTRY"
           done
 
   draft:
     name: Sign artifacts and draft the release
-    needs: [validate, sbom, build, publish, all-in-one]
-    # publish and all-in-one are skipped on a dry run (publish_images off); the draft still
-    # runs then and says that no images were pushed. When images were requested, both must have
-    # succeeded, so a draft never lists empty image digests.
+    needs: [validate, sbom, build, publish, all-in-one-publish, bundle, charts]
+    # publish, all-in-one-publish and charts are skipped on a dry run (publish_images off); the
+    # draft still runs then and says that no images were pushed. When images were requested, all
+    # must have succeeded, so a draft never lists empty image digests or unscanned images.
     if: >-
       always() && needs.sbom.result == 'success' && needs.build.result == 'success' &&
+      needs.bundle.result == 'success' &&
       (inputs.publish_images
-        && needs.publish.result == 'success' && needs.all-in-one.result == 'success'
+        && needs.publish.result == 'success' && needs.all-in-one-publish.result == 'success'
+        && needs.charts.result == 'success'
         || !inputs.publish_images)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -692,11 +966,31 @@ jobs:
             [ -f "$f" ] || continue
             sboms=$(jq -c --arg f "$f" '. + [$f]' <<< "$sboms")
           done
+          # trivy-<image>-linux-<arch>.json: the open findings each image scan reported.
+          scans='[]'
+          for f in trivy-*.json; do
+            [ -f "$f" ] || continue
+            scans=$(jq -c --arg f "$f" --slurpfile r "$f" '. + [{report: $f, image: $r[0].ArtifactName,
+              critical: ([$r[0].Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length),
+              high: ([$r[0].Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length)}]' <<< "$scans")
+          done
+          # source-<image>.txt: the published source of each image, first line "# Published as <ref>".
+          sources='[]'
+          for f in source-*.txt; do
+            [ -f "$f" ] || continue
+            ref=$(sed -n '1s/^# Published as //p' "$f")
+            image="${f#source-}"; image="${image%.txt}"
+            sources=$(jq -c --arg image "$image" --arg ref "$ref" --arg f "$f" '. + [{image: $image, ref: $ref, index: $f}]' <<< "$sources")
+          done
+          compose=(certping-compose-*.zip)
+          charts=(certping-*.tgz)
+          bundle=$(jq -cn --arg compose "${compose[0]}" '{compose: $compose, charts: $ARGS.positional}' --args "${charts[@]}")
           jq -n \
             --arg version "$VERSION" --arg sha "$SHA" --arg repo "$REPO_URL" --arg run "$RUN_URL" \
             --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg scan "$SCAN_MODE" \
             --argjson pre "$PRERELEASE" --argjson pushed "$PUBLISH" --argjson public "$IS_PUBLIC" \
-            --argjson images "$images" --argjson sboms "$sboms" '{
+            --argjson images "$images" --argjson sboms "$sboms" --argjson scans "$scans" \
+            --argjson sources "$sources" --argjson bundle "$bundle" '{
               version: $version, prerelease: $pre, commit: $sha, repository: $repo,
               workflow_run: $run, built_at: $built,
               platforms: ["linux/amd64", "linux/arm64"],
@@ -705,6 +999,13 @@ jobs:
               dependency_scan: {tool: "trivy", mode: $scan,
                 note: (if $scan == "blocking" then "The Security workflow fails on fixable HIGH and CRITICAL findings; it passed for this commit."
                        else "Report-only: the Security workflow reports fixable HIGH and CRITICAL findings but does not fail on them. This release is not claimed to be free of known vulnerabilities." end)},
+              image_scan: {tool: "trivy 0.76.1", mode: $scan, reports: $scans,
+                open_findings: ([$scans[] | .critical + .high] | add // 0),
+                note: (if ($pushed | not) then "Not run: the images were not pushed (dry run)."
+                       elif $scan == "blocking" then "Every image, on both platforms, was scanned before it was tagged; the release fails on any fixable HIGH or CRITICAL finding not accepted in .github/.trivyignore.yaml."
+                       else "Report-only: the open fixable HIGH and CRITICAL findings are in the reports. This release is not claimed to be free of known vulnerabilities." end)},
+              corresponding_source: $sources,
+              self_hosting: $bundle,
               signing: {images_signed: ($pushed and $public), images_attested: ($pushed and $public),
                         checksums_signed: $public, artifacts_attested: $public,
                         method: "Sigstore keyless (GitHub Actions OIDC identity)"}
@@ -723,12 +1024,17 @@ jobs:
         if: env.IS_PUBLIC == 'true'
         working-directory: dist
         run: cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
-      - name: Build provenance for the SBOMs, metadata and checksums (public repo only)
+      - name: Build provenance for the attached files (public repo only)
         if: env.IS_PUBLIC == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
+            dist/image-*.txt
             dist/sbom-*.cdx.json
+            dist/trivy-*.json
+            dist/source-*.txt
+            dist/certping-compose-*.zip
+            dist/certping-*.tgz
             dist/release-metadata.json
             dist/SHA256SUMS
 
@@ -771,17 +1077,53 @@ jobs:
               echo "  findings for \`$SHA\` are listed in the Security workflow run for that commit. This release"
               echo "  is **not** claimed to be free of known vulnerabilities."
             fi
+            if [ "$PUBLISH" != "true" ]; then
+              echo "- Image scan (trivy): not run, the images were not pushed (dry run)."
+            else
+              open=$(jq '.image_scan.open_findings' dist/release-metadata.json)
+              if [ "$SCAN_MODE" = "blocking" ]; then
+                echo "- Image scan (trivy, operating system packages and application dependencies of all five images,"
+                echo "  linux/amd64 and linux/arm64): **blocking** mode, no open fixable HIGH or CRITICAL finding"
+                echo "  (accepted exceptions excluded). Reports: \`trivy-*.json\`."
+              else
+                echo "- Image scan (trivy, all five images, both platforms): **report-only** mode, $open open fixable"
+                echo "  HIGH and CRITICAL findings, listed in \`trivy-*.json\`. This release is **not** claimed to be"
+                echo "  free of known vulnerabilities."
+              fi
+            fi
             echo "- Secret scan (gitleaks) and CI passed for \`$SHA\` (checked by the Release workflow)."
+            echo
+            if [ "$PUBLISH" = "true" ]; then
+              echo "### Source code of GPL and LGPL components"
+              echo "The source packages of every operating system package in each image, at the versions it"
+              echo "contains, and the source of libvips and the libraries bundled in it (web and all-in-one), are"
+              echo "published next to the images. Download one with \`oras pull <reference>\`:"
+              echo
+              jq -r '.corresponding_source[] | "- \(.image): `\(.ref)` (files and checksums: `\(.index)`)"' dist/release-metadata.json
+              echo
+            fi
+            echo "### Self-hosting"
+            if [ "$PUBLISH" = "true" ]; then
+              echo "- \`certping-compose-${VERSION#v}.zip\`: the Compose kit, with the images pinned to this release by digest."
+              echo "- \`certping-${VERSION#v}.tgz\`, \`certping-agent-${VERSION#v}.tgz\`: the Helm charts, also at"
+              echo "  \`oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts\`."
+            else
+              echo "- \`certping-compose-${VERSION#v}.zip\`, \`certping-${VERSION#v}.tgz\`, \`certping-agent-${VERSION#v}.tgz\`:"
+              echo "  the Compose kit and the Helm charts (dry run: the images they name were not pushed)."
+            fi
             echo
             echo "### Supply chain"
             echo "- \`sbom-*.cdx.json\`: CycloneDX software SBOM per app (the software's own dependencies), and"
             echo "  for the all-in-one image when images were pushed. This is not a cryptographic bill of"
             echo "  materials (CBOM) of your certificates; CertPing generates that in the product."
-            echo "- \`release-metadata.json\`: version, commit, workflow run, image digests, scan mode and what was signed."
+            echo "- \`trivy-<image>-linux-<arch>.json\`: the image scan reports, with every package in each image."
+            echo "- \`source-<image>.txt\`: where each image's source is published, and every file in it with its SHA-256."
+            echo "- \`release-metadata.json\`: version, commit, workflow run, image digests, scan results, source"
+            echo "  locations and what was signed."
             echo "- \`SHA256SUMS\`: checksums of the attached files."
             if [ "$IS_PUBLIC" = "true" ]; then
               echo "- \`SHA256SUMS.sigstore.json\`: Sigstore signature bundle for \`SHA256SUMS\`."
-              echo "- Build provenance attestations for the SBOMs, metadata and checksums are in the repository's"
+              echo "- Build provenance attestations for the attached files are in the repository's"
               echo "  Attestations tab."
             fi
             echo
