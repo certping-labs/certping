@@ -32,6 +32,5 @@ an unmodified CertPing for your own organization needs no change.
 
 ## Asking for permission
 
-For anything not covered here, email `support@certping.com` with "Trademark"
-in the subject. The project has no separate legal address; trademark questions
-sent there reach Seaionl Inc.
+For anything not covered here, email `legal@certping.com`. Trademark and
+licence questions sent there reach Seaionl Inc.
