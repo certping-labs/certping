@@ -516,8 +516,10 @@ const PACKAGE_NOTES = {
   'caniuse-lite': 'Attribution: contains data from Can I use (https://caniuse.com) by Alexis Deveria, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). The data is used unmodified.',
 };
 
-// libvips, the LGPL library sharp loads, gets its own section with the source and the
-// replacement terms, built from the installed @img/sharp-libvips package.
+// libvips, the LGPL library sharp loads, gets its own section with the source, the replacement
+// terms and the legal files of every library bundled into it, built from the installed
+// @img/sharp-libvips package. The legal files of each bundled library, from its source at the
+// version in versions.json, are in licenses/components/sharp-libvips-<version>/<library>-<version>/.
 function libvipsSection(web) {
   const pkg = web.find((c) => c.id.startsWith('@img/sharp-libvips-'));
   if (!pkg) return null;
@@ -527,18 +529,39 @@ function libvipsSection(web) {
   const licensing = (readme.split('## Licensing')[1] || '').trim().replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
   const pkgVersion = pkg.version;
   const libs = Object.entries(versions).map(([k, v]) => `  ${k.padEnd(14)} ${v}`).join('\n');
+
+  const legal = new Map(); // hash -> { text, from: [] }
+  const base = path.join(COMPONENTS, `sharp-libvips-${pkgVersion}`);
+  for (const [lib, version] of Object.entries(versions)) {
+    const libDir = path.join(base, `${lib}-${version}`);
+    if (!fs.existsSync(libDir)) fail(`no legal files for ${lib} ${version} in libvips: add ${path.relative(ROOT, libDir)}/`);
+    for (const f of fs.readdirSync(libDir, { recursive: true }).sort()) {
+      if (!fs.statSync(path.join(libDir, f)).isFile()) continue;
+      const text = extraBeyondStandard(readText(path.join(libDir, f)));
+      if (!text) continue;
+      const key = hash(text);
+      if (!legal.has(key)) legal.set(key, { text, from: [] });
+      legal.get(key).from.push(`${lib} ${version} (${f})`);
+    }
+  }
+  const legalFiles = [...legal.values()]
+    .map((e) => `\n${LINE}\nFrom: ${e.from.join('\n      ')}\n${LINE}\n${e.text}`)
+    .join('');
+
   return {
     title: 'libvips and the libraries it bundles (used by sharp)',
     version: `libvips ${versions.vips} in @img/sharp-libvips-linux-x64 and @img/sharp-libvips-linux-arm64 ${pkgVersion}`,
-    licenses: ['LGPL-3.0-or-later'],
+    licenses: ['LGPL-2.1-or-later (used under LGPL-3.0)'],
     texts: ['LGPL-3.0-or-later', 'MPL-2.0'],
     where: 'node_modules/@img/sharp-libvips-linux-<arch>/lib/',
     body: `The web app optimises images with sharp (Apache-2.0), which loads the prebuilt shared library
 libvips-cpp.so.${versions.vips} and the libraries it depends on at run time. libvips is licensed
-under the GNU Lesser General Public License 3.0 or later (LGPL-3.0-or-later).
+under the GNU Lesser General Public License 2.1 or later. CertPing uses it, and the bundled
+libraries licensed under the LGPL, as sharp-libvips does: under the LGPL 3.0, which each of
+their licenses allows.
 
 Source code: libvips ${versions.vips}: https://github.com/libvips/libvips (tag v${versions.vips}).
-The build scripts and the exact versions of every bundled library are at
+The build scripts, the patches they apply and the exact versions of every bundled library are at
 https://github.com/lovell/sharp-libvips (tag v${pkgVersion}). CertPing does not modify libvips or
 the libraries it bundles.
 
@@ -546,11 +569,25 @@ You may replace the libvips library in this image with a version you build or mo
 for example by replacing the files in node_modules/@img/sharp-libvips-linux-<arch>/lib/ with a
 compatible build; sharp loads it dynamically, so no part of CertPing has to be rebuilt.
 
+This software is based in part on the work of the Independent JPEG Group.
+
+Portions of this software are copyright © 2026 The FreeType Project (https://freetype.org). All
+rights reserved.
+
+cairo ${versions.cairo} is offered under the GNU LGPL 2.1 or the Mozilla Public License 1.1. CertPing uses
+it under the Mozilla Public License 2.0, as section 6.2 of the MPL 1.1 allows. Its source code:
+https://cairographics.org/releases/cairo-${versions.cairo}.tar.xz
+
 Bundled library versions:
 ${libs}
 
 Licensing, from the package README:
-${licensing}`,
+${licensing}
+
+The copyright and license files of libvips and the bundled libraries follow, from the source of
+each at the version above. Files that are essentially the text of the GNU LGPL or GPL are not
+repeated; the LGPL 3.0 and the GPL 3.0 it incorporates are in section 6.
+${legalFiles}`,
   };
 }
 

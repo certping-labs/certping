@@ -17,6 +17,7 @@ Every CertPing image carries these files in `/licenses/certping/`:
 | `LICENSE`, `NOTICE` | Copies of the root files (generated) |
 | `texts/` | Full license texts, from the SPDX license list (EDL-1.0 from eclipse.org, the PostgreSQL License from PostgreSQL, GPL-2.0 with the Classpath Exception from OpenJDK) |
 | `components/` | Texts for components that are not application dependencies: the Node.js license, the Valkey license, the font licenses and the OpenTelemetry Java agent's bundled notices |
+| `components/sharp-libvips-1.3.4/` | Per library bundled in libvips (`<library>-<version>`, as in the package's `versions.json`), its license and copyright files from its source at that version |
 | `components/caddy-2.8.4/` | `modules.txt` (what `caddy build-info` prints) and, per Go module and the Go toolchain, the license, NOTICE and patent files of its source at that version |
 | `../apps/<app>/licenses/` | Copies of `LICENSE`, `NOTICE` and the app's `THIRD-PARTY-NOTICES.txt` inside each app's Docker build context (generated) |
 
@@ -50,6 +51,11 @@ COPYING, NOTICE, COPYRIGHT and PATENTS file in the archive, except test data, pa
 and files for other operating systems. When the Caddy version changes, replace `modules.txt` with
 the new binary's `caddy build-info` and collect the files again; the generator fails if a module
 has none.
+
+The libvips files come from the source tarballs that sharp-libvips' `build/posix.sh` downloads
+(at its release tag) for each library: the top-level license and copyright files, plus those of
+code a library bundles. When sharp-libvips changes, collect them again for the versions in its
+`versions.json`; the generator fails if a library has none.
 
 The script runs Maven offline by default; set `MVN_OFFLINE=` to let it download. It needs JDK
 25, Maven, Node.js 24 and pnpm. Versions of runtime components (OpenJDK, Node.js, PostgreSQL,
