@@ -129,6 +129,26 @@ const MAVEN_OVERRIDES = {
   },
 };
 
+// Release tag formats of projects whose POM names no tag (or HEAD), to point at the source of the
+// exact version shipped.
+const SOURCE_TAGS = {
+  'ch.qos.logback': (v) => `v_${v}`,
+  'org.aspectj': (v) => `V${v.replaceAll('.', '_')}`,
+  'jakarta.annotation': (v) => v,
+  'jakarta.transaction': (v) => v,
+};
+
+// EPL-2.0 section 3.1(a): object code must come with a statement that the source code is available
+// under the EPL and how to get it.
+function eplSource(c) {
+  if (!c.maven) fail(`${c.id} ${c.version}: EPL-2.0 needs a source statement; only Maven artifacts have one`);
+  const { g, a, v, scm } = c.maven;
+  const sourceTag = scm && scm.tag && scm.tag !== 'HEAD' ? scm.tag : SOURCE_TAGS[g]?.(v);
+  if (!scm || !sourceTag) fail(`${c.id} ${c.version}: no source repository or tag for the EPL-2.0 statement; add it to SOURCE_TAGS`);
+  const jar = `https://repo1.maven.org/maven2/${g.split('.').join('/')}/${a}/${v}/${a}-${v}-sources.jar`;
+  return `Source code, available under the EPL-2.0: ${scm.url.replace(/\.git$/, '')} (tag ${sourceTag})\n      and ${jar}`;
+}
+
 function elect(ids) {
   const unique = [...new Set(ids)];
   if (unique.length <= 1) return { chosen: unique, offered: unique };
@@ -186,7 +206,7 @@ function pomFile(g, a, v) {
 
 function pomInfo(g, a, v, depth = 0) {
   const file = pomFile(g, a, v);
-  if (depth > 12 || !fs.existsSync(file)) return { licenses: null, url: null };
+  if (depth > 12 || !fs.existsSync(file)) return { licenses: null, url: null, scm: null };
   const xml = stripComments(fs.readFileSync(file, 'utf8'));
   const parent = tag(xml, 'parent');
   const own = parent ? xml.replace(/<parent>[\s\S]*?<\/parent>/, '') : xml;
@@ -201,11 +221,16 @@ function pomInfo(g, a, v, depth = 0) {
   const top = own.replace(/<(dependencies|dependencyManagement|build|profiles|licenses|developers|organization|scm|issueManagement|distributionManagement|mailingLists|ciManagement|repositories|pluginRepositories|reporting)>[\s\S]*?<\/\1>/g, '');
   let url = tag(top, 'url');
   if (url && url.includes('${')) url = null;
-  if ((!licenses || !url) && parent) {
+  const scmBlock = tag(own, 'scm');
+  let scm = scmBlock ? { url: tag(scmBlock, 'url'), tag: tag(scmBlock, 'tag') } : null;
+  if (scm && (!scm.url || scm.url.includes('${'))) scm = null;
+  if ((!licenses || !url || !scm) && parent) {
     const up = pomInfo(tag(parent, 'groupId'), tag(parent, 'artifactId'), tag(parent, 'version'), depth + 1);
-    return { licenses: licenses || up.licenses, url: url || up.url };
+    // A parent of another project (org.eclipse.ee4j:project, for example) names its own repository.
+    const sameProject = tag(parent, 'groupId') === g;
+    return { licenses: licenses || up.licenses, url: url || up.url, scm: scm || (sameProject ? up.scm : null) };
   }
-  return { licenses, url };
+  return { licenses, url, scm };
 }
 
 function jarEntries(jar) {
@@ -262,6 +287,7 @@ function mavenComponents(file) {
       url: info.url,
       licenses: ids,
       note: override ? override.note : null,
+      maven: { g: d.g, a: d.a, v: d.v, scm: info.scm },
       files,
     });
   }
@@ -587,7 +613,8 @@ reproduced in sections 4 and 5, and the full license texts are in section 6.\n`)
         usedTexts.add(id);
       }
       if (c.licenses.length > 1 && !c.and) elections.push({ c, chosen });
-      out.push(`${c.id} ${c.version}\n    ${licenseLabel(c)}${c.url ? `\n    ${c.url}` : ''}${c.note ? `\n    Note: ${c.note}` : ''}\n`);
+      const source = chosen.includes('EPL-2.0') ? `\n    ${eplSource(c)}` : '';
+      out.push(`${c.id} ${c.version}\n    ${licenseLabel(c)}${c.url ? `\n    ${c.url}` : ''}${source}${c.note ? `\n    Note: ${c.note}` : ''}\n`);
       for (const f of c.files) {
         const from = `${c.id} ${c.version} (${f.name})`;
         if (f.kind === 'notice') {
