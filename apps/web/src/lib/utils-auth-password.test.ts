@@ -102,8 +102,8 @@ describe("utils auth/password helpers", () => {
     }
 
     expect(formatZodErrors(result.error)).toEqual({
-      email: "Invalid email",
-      "nested.count": "Number must be greater than or equal to 1",
+      email: "Invalid email address",
+      "nested.count": "Too small: expected number to be >=1",
     });
     expect(formatZodErrors(undefined)).toBeNull();
   });

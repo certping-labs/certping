@@ -5,7 +5,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -162,7 +162,9 @@ export default function AddCredentialPage() {
   const agentTransport = useAgentTransport();
   const canChooseStorage = canChooseCredentialStorage(agentTransport);
   const form = useForm<CreateCredentialFormValues>({
-    resolver: zodResolver(createCredentialFormSchema),
+    resolver: zodResolver(
+      createCredentialFormSchema,
+    ) as Resolver<CreateCredentialFormValues>,
     defaultValues: {
       type: initialType,
       provider: "",

@@ -10,7 +10,7 @@ import React, {
   useState,
   type ChangeEvent,
 } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CircleNotchIcon } from "@phosphor-icons/react";
@@ -246,7 +246,7 @@ export function DeployNewCertDialog({
   const [prefillAppliedFor, setPrefillAppliedFor] = useState("");
 
   const form = useForm<DeployFormValues>({
-    resolver: zodResolver(deployFormSchema),
+    resolver: zodResolver(deployFormSchema) as Resolver<DeployFormValues>,
     defaultValues: {
       certificateXref: "",
       deploymentCredentialXref: "",
