@@ -16,6 +16,7 @@
 <p>
   <a href="#quickstart">Quickstart</a> ·
   <a href="#run-from-source">Run from source</a> ·
+  <a href="#how-certping-compares">Compare</a> ·
   <a href="#documentation">Docs</a> ·
   <a href="#community-and-support">Community</a>
 </p>
@@ -24,9 +25,13 @@
 
 ## What CertPing does
 
-Certificates expire, and an expired certificate takes a site down. CertPing keeps track of your
-TLS certificates, renews them before they expire, and helps you get ready for post-quantum
-cryptography:
+Certificates expire, and an expired certificate takes a site down. The deadline is real.
+Certificates are capped at 200 days now, 100 days from March 2027, and 47 days from March 2029
+([CA/B Forum](https://cabforum.org/2025/04/11/ballot-sc081v3-introduce-schedule-of-reducing-validity-and-data-reuse-periods/)).
+Renewing by hand will not keep up.
+
+CertPing keeps track of your TLS certificates, renews them before they expire, and helps you get
+ready for post-quantum cryptography:
 
 1. **Find** the certificates you already have in Kubernetes, AWS Certificate Manager and Azure
    Key Vault.
@@ -173,10 +178,36 @@ Always run a release tag such as `0.0.1-beta`, never `latest`.
 - **The bundled agent shares storage with the server,** so the server host can read the keys it
   holds. Run a separate agent to keep keys away from the server
   ([key custody](docs/architecture.md#key-custody-and-trust)).
-- **Is CertPing the right tool?** For a few hosts, Caddy, Certbot, lego or acme.sh are simpler.
-  Inside a single Kubernetes cluster, cert-manager is simpler.
 
 More in [SECURITY.md](SECURITY.md#known-limitations).
+
+## How CertPing compares
+
+CertPing is for teams whose certificates are spread across clusters, clouds, CDNs and appliances,
+and who want one self-hosted place to find, renew and deploy them.
+
+| | CertPing | cert-manager | Certbot, acme.sh, lego | Caddy | Commercial CLM platforms |
+| --- | --- | --- | --- | --- | --- |
+| What it is | Self-hosted certificate lifecycle manager | Kubernetes controller | Command-line ACME clients | Web server with automatic HTTPS | Enterprise certificate lifecycle products |
+| Where it works | Many clusters, clouds and networks, through agents | One Kubernetes cluster per install | One host per install | The sites that Caddy itself serves | Many environments |
+| Web UI and central inventory | Yes | No (Kubernetes resources) | No | No | Yes |
+| Finds certificates you already have | Kubernetes, AWS ACM, Azure Key Vault | No | No | No | Yes, usually including network scans |
+| Certificate authorities | Any ACME CA, DigiCert, GlobalSign | ACME, Vault, its own CA and others through issuers | ACME | ACME and its own internal CA | Many |
+| Deploys to cloud load balancers, CDNs and appliances | Yes: AWS, Azure, GCP, Cloudflare, Akamai, F5, Kubernetes | No, Kubernetes Secrets only | Local files; scripts or deploy hooks for more | Its own server only | Yes |
+| Private keys stay in your network | Yes, agents keep them | Yes, in the cluster | Yes, on the host | Yes, on the server | Depends on the product and where it runs |
+| Post-quantum readiness and CBOM export | Yes | No | No | No | Varies |
+| License and cost | Apache 2.0, free | Apache 2.0, free | Free and open source | Apache 2.0, free | Paid, closed source |
+| Maturity | Public beta | Mature, widely used | Mature, widely used | Mature, widely used | Mature |
+
+When something else is the better choice:
+
+- **A few servers or a homelab:** Certbot, acme.sh or lego on each host, or Caddy as your web
+  server, is simpler than running CertPing.
+- **Everything runs in one Kubernetes cluster:** use cert-manager. CertPing adds value once you also
+  have certificates in cloud load balancers, CDNs, appliances or other clusters.
+- **You need broad network scanning, many more CAs and vendor support today:** a commercial
+  certificate lifecycle platform covers more, at a price. CertPing offers paid support and
+  enterprise plans through [certping.com/enterprise](https://www.certping.com/enterprise/).
 
 ## Documentation
 
