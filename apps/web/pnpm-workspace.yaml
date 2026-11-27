@@ -7,6 +7,8 @@ packages:
 # Install a newly published version only once it is 3 days old (default 1),
 # and refuse a version whose publish trust is weaker than an earlier one's.
 minimumReleaseAge: 4320
+# An urgent security fix younger than that goes in minimumReleaseAgeExclude,
+# by exact version, until it is 3 days old.
 trustPolicy: no-downgrade
 # Published by their usual maintainers without the provenance earlier versions
 # carried (checked 2026-11-27); exact versions only, so a newer one is checked.
