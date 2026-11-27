@@ -68,7 +68,7 @@
         <dnsjava.version>3.7.1</dnsjava.version>
         <!-- AWS SDK BOM -->
         <aws-sdk.version>2.59.5</aws-sdk.version>
-        <kubernetes-client.version>27.0.1</kubernetes-client.version>
+        <kubernetes-client.version>28.0.0</kubernetes-client.version>
         <google-cloud-bom.version>26.94.0</google-cloud-bom.version>
         <!-- Test / QA -->
         <testcontainers.version>2.0.5</testcontainers.version>
