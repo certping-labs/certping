@@ -66,7 +66,7 @@ RUN set -eux; \
 # Hardened runtime (UBI):
 # - Uses Red Hat UBI Node.js 24 image that is redistributable for enterprise delivery.
 # - Pin to scanned digest for reproducibility/compliance traceability.
-FROM registry.access.redhat.com/ubi10/nodejs-24@sha256:f4748b252f0f7353e0f617625ebcba5768e847dde6aaa4b116ac6e2a954c54b0 AS runner
+FROM registry.access.redhat.com/ubi10/nodejs-24@sha256:228c8675a62feb55f88dc9dee94d5a82e6f0e887ec47bd8f5e524a797a0984d7 AS runner
 WORKDIR /app
 
 # Remove SSH client tooling from the runtime image to reduce attack surface.
