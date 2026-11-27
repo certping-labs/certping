@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at `support@certping.com`, with "Code of conduct" in the subject. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at `conduct@certping.com`. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
@@ -73,7 +73,7 @@ Community leaders will follow these Community Impact Guidelines in determining t
 This code of conduct applies in every CertPing project space: issues, pull
 requests, discussions and any event or channel run for the project.
 
-`support@certping.com` is the general support inbox of Seaionl Inc.; conduct
+`conduct@certping.com` is Seaionl Inc.'s address for conduct reports only;
 reports sent there are read by the maintainers listed in
 [MAINTAINERS.md](MAINTAINERS.md). If your report concerns a maintainer, you can
 also email another maintainer directly, or report the content or account to
