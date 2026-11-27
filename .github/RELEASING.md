@@ -47,21 +47,28 @@ reviews and publishes by hand.
    - builds each of the four application images on a native runner per
      platform (`ubuntu-24.04` for `linux/amd64`, `ubuntu-24.04-arm` for
      `linux/arm64`), with OCI labels (source, revision, version). When
-     publishing, each platform image is pushed by digest and the two are
-     joined into one tagged multi-platform manifest,
-     `ghcr.io/certping-labs/certping-<app>:<version>`;
+     publishing, each platform image is pushed by digest only;
    - when publishing, scans each platform image by digest with trivy before
      it is tagged (`.github/scripts/image-scan.sh`): operating system packages
      and application dependencies, fixable HIGH and CRITICAL findings, with
      the settings, exceptions and blocking or report-only mode of the Security
      workflow (`.github/trivy.yaml`, `.github/.trivyignore.yaml`). In blocking
      mode an open finding stops the release before anything is tagged;
-   - when publishing, collects the corresponding source of each image and
-     pushes it next to the image as `ghcr.io/certping-labs/<image>-source:<version>`
-     before the image is tagged (see "Corresponding source" below);
-   - when publishing, builds the all-in-one image `ghcr.io/certping-labs/certping:<version>`
-     from those four images by digest (its arm64 half runs under QEMU), and
-     scans it and publishes its source the same way before tagging it;
+   - when publishing, joins the two scanned platform images of each app into
+     one multi-platform manifest list, pushed by digest without a tag, and
+     builds the all-in-one image from those four manifest lists by digest (its
+     arm64 half runs under QEMU), pushes it by digest and scans it the same way;
+   - only once all five images passed their scans, collects the corresponding
+     source of each image and pushes it next to the image as
+     `ghcr.io/certping-labs/<image>-source:<version>` (see "Corresponding
+     source" below). A failed scan therefore leaves no tagged image and no
+     source package, only untagged digests (delete them by hand if wanted).
+     A failed source or tagging step can leave some `-source` packages,
+     which the next run of the same version overwrites;
+   - once every source is published, tags the images,
+     `ghcr.io/certping-labs/certping-<app>:<version>` and
+     `ghcr.io/certping-labs/certping:<version>`, each at the digest that was
+     scanned, then signs and attests them (below);
    - packages the self-hosting kits: `certping-compose-<version>.zip` (the
      Compose kit with the images pinned to the release, by digest when
      published) and the two Helm charts as `.tgz` with LICENSE and NOTICE;

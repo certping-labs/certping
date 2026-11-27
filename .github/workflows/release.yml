@@ -8,12 +8,13 @@ name: Release
 # v0.1.0-rc.1. It checks that CI and the Security workflow already passed for
 # that exact commit, tests the commit again, builds the four application images
 # for linux/amd64 and linux/arm64 on native runners, assembles the all-in-one
-# image from them by digest, scans every image for vulnerabilities before it is
-# tagged, publishes the corresponding source of each image's operating system
-# packages and libvips next to it, writes a CycloneDX SBOM per image, the
-# Compose kit and Helm charts, a release-metadata.json and a SHA256SUMS file,
-# signs and attests what it can (public repository only), and opens a DRAFT
-# GitHub release for review. No tag exists until a maintainer publishes the
+# image from them by digest, and scans every image for vulnerabilities. Only
+# once all five images passed their scans does it publish the corresponding
+# source of each image next to it, and then tag, sign and attest the images
+# (signing and attesting on a public repository only); until then every image
+# exists by digest only. It writes a CycloneDX SBOM per image, the Compose kit
+# and Helm charts, a release-metadata.json and a SHA256SUMS file, and opens a
+# DRAFT GitHub release for review. No tag exists until a maintainer publishes the
 # draft by hand; publishing creates the tag on the release commit. See
 # .github/RELEASING.md.
 #
@@ -301,7 +302,7 @@ jobs:
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-      # Pushed by digest only; the publish job joins both platforms into one tagged manifest list.
+      # Pushed by digest only; the manifest job joins both platforms into one manifest list.
       - name: Build${{ inputs.publish_images && ' and push by digest' || ' (dry run)' }}
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -387,14 +388,78 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # One multi-platform manifest list per application image, joining the two scanned platform
+  # images, pushed by digest without a tag. The all-in-one is built from these; the publish job
+  # tags them once every image, the all-in-one included, has passed its scan.
+  manifest:
+    name: Manifest list of ${{ matrix.app }}
+    needs: [validate, scan]
+    if: always() && inputs.publish_images && needs.scan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write # push the manifest list by digest
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [web, server, agent, notifier]
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/certping-${{ matrix.app }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-${{ matrix.app }}-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install oras 1.3.6 (checksum verified)
+        run: |
+          curl -fsSLo oras.tgz https://github.com/oras-project/oras/releases/download/v1.3.6/oras_1.3.6_linux_amd64.tar.gz
+          echo "66fb0ad7206f3f6fa77ed5b552049d364ccf4b50b1684554f731f76302b52ca0  oras.tgz" | sha256sum -c -
+          tar -xzf oras.tgz oras
+      # imagetools create pushes only to a tag, so it writes the manifest list to a file instead
+      # and oras pushes that to the repository untagged.
+      - name: Push the manifest list by digest
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          refs=()
+          for arch in amd64 arm64; do
+            refs+=("$IMAGE@$(cat "digests/$arch")")
+          done
+          docker buildx imagetools create --dry-run "${refs[@]}" > index.out
+          printf '%s' "$(cat index.out)" > index.json
+          digest=$(./oras manifest push --descriptor "$IMAGE" index.json | jq -r .digest)
+          if [[ "$digest" != sha256:* || "$digest" != "sha256:$(sha256sum index.json | cut -d' ' -f1)" ]]; then
+            echo "::error::could not push the manifest list of $IMAGE (got '$digest')"; exit 1
+          fi
+          docker buildx imagetools inspect "$IMAGE@$digest"
+          echo "$IMAGE@$digest" > "image-$APP.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-image-${{ matrix.app }}
+          path: image-${{ matrix.app }}.txt
+          retention-days: 14
+          if-no-files-found: error
+
   # The corresponding source of each image's operating system packages (and of libvips in the web
   # image), published next to the image as ghcr.io/<owner>/certping-<app>-source:<version>
   # before the image is tagged, so no tagged image exists without it (GPL-3.0 section 6(d),
-  # LGPL-3.0 section 4). The package list comes from the scan reports.
+  # LGPL-3.0 section 4). It starts only once all five images passed their scans, so a failed scan
+  # leaves no tagged image and no source package for the version. The package list comes from the
+  # scan reports.
   source:
     name: Source of ${{ matrix.app }}
-    needs: [validate, build, scan]
-    if: always() && inputs.publish_images && needs.scan.result == 'success'
+    needs: [validate, scan, scan-all-in-one]
+    if: >-
+      always() && inputs.publish_images &&
+      needs.scan.result == 'success' && needs.scan-all-in-one.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -448,14 +513,17 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  # Tags, signs and attests each application image once every image has passed its scan and the
+  # source of every image is published.
   publish:
     name: Publish ${{ matrix.app }}
-    needs: [validate, sbom, build, source]
+    needs: [validate, sbom, manifest, source, source-all-in-one]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
     if: >-
-      always() && inputs.publish_images &&
-      needs.sbom.result == 'success' && needs.build.result == 'success' && needs.source.result == 'success'
+      always() && inputs.publish_images && needs.sbom.result == 'success' &&
+      needs.manifest.result == 'success' && needs.source.result == 'success' &&
+      needs.source-all-in-one.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -474,9 +542,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: digest-${{ matrix.app }}-*
-          merge-multiple: true
-          path: digests
+          name: release-image-${{ matrix.app }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-sbom-${{ matrix.app }}
@@ -486,22 +552,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      # One manifest list per image: linux/amd64 and linux/arm64. The digest signed and
-      # attested below is the manifest list's.
-      - name: Create the multi-platform manifest
+      # The manifest list (linux/amd64 and linux/arm64) the manifest job pushed by digest. With one
+      # source that is an index, imagetools create copies it unchanged, so the tag points at the
+      # scanned digest, which is also the one signed and attested below.
+      - name: Tag the scanned image
         id: manifest
         env:
           APP: ${{ matrix.app }}
         run: |
-          refs=()
-          for arch in amd64 arm64; do
-            refs+=("$IMAGE@$(cat "digests/$arch")")
-          done
-          docker buildx imagetools create --tag "$IMAGE:$TAG" "${refs[@]}"
-          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
-          docker buildx imagetools inspect "$IMAGE@$digest"
+          ref="$(cat "image-$APP.txt")"
+          digest="${ref##*@}"
+          case "$ref" in "$IMAGE@sha256:"*) ;; *) echo "::error::$APP is not pinned by digest: $ref"; exit 1 ;; esac
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "$ref"
+          tagged=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          if [ "$tagged" != "$digest" ]; then
+            echo "::error::$IMAGE:$TAG is $tagged, not the scanned $digest"; exit 1
+          fi
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
-          echo "$IMAGE@$digest" > "image-$APP.txt"
       - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         if: env.IS_PUBLIC == 'true'
       - name: Sign image (keyless, public repo only)
@@ -524,23 +591,18 @@ jobs:
           subject-digest: ${{ steps.manifest.outputs.digest }}
           sbom-path: sbom-${{ matrix.app }}.cdx.json
           push-to-registry: true
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-image-${{ matrix.app }}
-          path: image-${{ matrix.app }}.txt
-          retention-days: 14
-          if-no-files-found: error
 
   all-in-one:
     name: Build the all-in-one image
-    # Assembled from the four application images just pushed, by digest, so it carries the same
-    # layers. Only when images are published: without a push there is nothing to assemble from.
-    # Its own steps are package installs on Ubuntu, so the arm64 half runs under QEMU. Pushed by
-    # digest only: all-in-one-publish tags it once it is scanned and its source is published.
-    needs: [validate, publish]
+    # Assembled from the four scanned application images, by the digests of their untagged
+    # manifest lists, so it carries the same layers. Only when images are published: without a
+    # push there is nothing to assemble from. Its own steps are package installs on Ubuntu, so the
+    # arm64 half runs under QEMU. Pushed by digest only: all-in-one-publish tags it once every
+    # image is scanned and every source is published.
+    needs: [validate, manifest]
     # always() and explicit results: approve-stable is skipped for a pre-release, and a plain `if`
     # would skip this job because of any skipped job upstream.
-    if: always() && inputs.publish_images && needs.publish.result == 'success'
+    if: always() && inputs.publish_images && needs.manifest.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -683,8 +745,10 @@ jobs:
 
   all-in-one-publish:
     name: Publish the all-in-one image
-    needs: [validate, all-in-one, source-all-in-one]
-    if: always() && needs.source-all-in-one.result == 'success'
+    needs: [validate, all-in-one, source, source-all-in-one]
+    if: >-
+      always() && inputs.publish_images &&
+      needs.source.result == 'success' && needs.source-all-in-one.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -704,16 +768,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      # With one source that is an index, imagetools create copies it unchanged, so the tag points
-      # at the digest that was scanned.
-      - name: Tag the scanned image
-        run: |
-          docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
-          tagged=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
-          if [ "$tagged" != "$DIGEST" ]; then
-            echo "::error::$IMAGE:$TAG is $tagged, not the scanned $DIGEST"; exit 1
-          fi
-          echo "$IMAGE@$DIGEST" > image-all-in-one.txt
       # The all-in-one adds PostgreSQL, Valkey, Caddy and Ubuntu packages to the application
       # layers, so its SBOM is read from the pushed image itself (the linux/amd64 variant).
       - name: Image SBOM (CycloneDX)
@@ -726,6 +780,16 @@ jobs:
           output-file: sbom-all-in-one.cdx.json
           upload-artifact: false
           upload-release-assets: false
+      # With one source that is an index, imagetools create copies it unchanged, so the tag points
+      # at the digest that was scanned.
+      - name: Tag the scanned image
+        run: |
+          docker buildx imagetools create --tag "$IMAGE:$TAG" "$IMAGE@$DIGEST"
+          tagged=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          if [ "$tagged" != "$DIGEST" ]; then
+            echo "::error::$IMAGE:$TAG is $tagged, not the scanned $DIGEST"; exit 1
+          fi
+          echo "$IMAGE@$DIGEST" > image-all-in-one.txt
       - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         if: env.IS_PUBLIC == 'true'
       - name: Sign image (keyless, public repo only)
