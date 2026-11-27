@@ -16,7 +16,8 @@ Every CertPing image carries these files in `/licenses/certping/`:
 | `server/`, `agent/`, `notifier/`, `web/`, `all-in-one/` | `THIRD-PARTY-NOTICES.txt` for each image (generated) |
 | `LICENSE`, `NOTICE` | Copies of the root files (generated) |
 | `texts/` | Full license texts, from the SPDX license list (EDL-1.0 from eclipse.org, the PostgreSQL License from PostgreSQL, GPL-2.0 with the Classpath Exception from OpenJDK) |
-| `components/` | Texts for components that are not application dependencies: the Node.js license, the Valkey license, the font licenses, the OpenTelemetry Java agent's bundled notices and the Go modules in Caddy |
+| `components/` | Texts for components that are not application dependencies: the Node.js license, the Valkey license, the font licenses and the OpenTelemetry Java agent's bundled notices |
+| `components/caddy-2.8.4/` | `modules.txt` (what `caddy build-info` prints) and, per Go module and the Go toolchain, the license, NOTICE and patent files of its source at that version |
 | `../apps/<app>/licenses/` | Copies of `LICENSE`, `NOTICE` and the app's `THIRD-PARTY-NOTICES.txt` inside each app's Docker build context (generated) |
 
 Each app's Dockerfile copies `apps/<app>/licenses/` to `/licenses/certping/`; the all-in-one
@@ -42,6 +43,13 @@ export JAVA_HOME=<JDK 25>
 .github/scripts/third-party-notices.sh            # rewrite the generated files, then commit them
 .github/scripts/third-party-notices.sh --check    # exit 1 if the committed files are stale (for CI)
 ```
+
+The Caddy files come from the module source archives on proxy.golang.org at the versions in
+`modules.txt` (the Go toolchain's from github.com/golang/go at its release tag): every LICENSE,
+COPYING, NOTICE, COPYRIGHT and PATENTS file in the archive, except test data, packaging files
+and files for other operating systems. When the Caddy version changes, replace `modules.txt` with
+the new binary's `caddy build-info` and collect the files again; the generator fails if a module
+has none.
 
 The script runs Maven offline by default; set `MVN_OFFLINE=` to let it download. It needs JDK
 25, Maven, Node.js 24 and pnpm. Versions of runtime components (OpenJDK, Node.js, PostgreSQL,

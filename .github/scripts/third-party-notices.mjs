@@ -173,13 +173,15 @@ function readText(file) {
 }
 
 // A license file that is just the standard text of a license whose full text we include anyway
-// gives nothing to add. Apache LICENSE files sometimes append third-party terms after the
-// appendix: keep that part.
+// gives nothing to add. Apache LICENSE files sometimes put other terms before the license or
+// append third-party terms after the appendix: keep those parts.
 function extraBeyondStandard(text) {
   if (/Apache License\s+Version 2\.0, January 2004/.test(text) && /TERMS AND CONDITIONS/.test(text)) {
+    const before = text.slice(0, text.search(/Apache License\s+Version 2\.0, January 2004/)).trim();
     const end = text.lastIndexOf('limitations under the License.');
     const rest = end >= 0 ? text.slice(end + 'limitations under the License.'.length).trim() : '';
-    return rest.length > 200 ? normalize(rest) : null;
+    const kept = [before, rest].filter((part) => part.length > 200);
+    return kept.length ? normalize(kept.join('\n\n[The Apache License 2.0 text, in section 6]\n\n')) : null;
   }
   if (/Eclipse Public License - v 2\.0/.test(text) && text.length > 10000) return null;
   if (/GNU (LESSER |LIBRARY )?GENERAL PUBLIC LICENSE\s+Version [23]/.test(text) && text.length > 15000) return null;
@@ -367,6 +369,58 @@ function pnpmComponents(file) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Go modules compiled into the Caddy binary of the all-in-one: modules.txt is what `caddy
+// build-info` prints, and each <module>@<version>/ holds the legal files of that module's source
+// at that version (licenses/README.md says how they were collected).
+
+const CADDY = path.join(COMPONENTS, 'caddy-2.8.4');
+
+// Every license a module's license file states; some cover parts of a module with other terms.
+function goLicenseIds(text, where) {
+  const ids = [];
+  if (/CC0 1\.0 Universal/.test(text)) ids.push('CC0-1.0');
+  if (/Apache License,?\s+Version 2\.0/i.test(text)) ids.push('Apache-2.0');
+  if (/Mozilla Public License,?\s+(Version|v\.?)\s*2\.0/i.test(text)) ids.push('MPL-2.0');
+  if (/Permission is hereby granted, free of charge/i.test(text)) ids.push('MIT');
+  if (/Permission to use, copy, modify, and(\/or)? distribute this software for any\s+purpose/i.test(text)) ids.push('ISC');
+  if (/Redistribution and use in source and binary forms/i.test(text)) {
+    ids.push(/Neither the name|endorse or promote/i.test(text) ? 'BSD-3-Clause' : 'BSD-2-Clause');
+  }
+  if (ids.length === 0) fail(`${where}: cannot tell its license; add the case to goLicenseIds`);
+  return ids;
+}
+
+function goModuleZip(mod, version) {
+  const escaped = mod.replace(/[A-Z]/g, (c) => `!${c.toLowerCase()}`);
+  return `https://proxy.golang.org/${escaped}/@v/${version}.zip`;
+}
+
+function caddyModules() {
+  const [first, ...rest] = readText(path.join(CADDY, 'modules.txt')).trim().split('\n');
+  const toolchain = first.match(/^Go toolchain (go\S+)$/);
+  if (!toolchain) fail('caddy-2.8.4/modules.txt must start with "Go toolchain <version>"');
+  const modules = [['go', toolchain[1]], ...rest.map((l) => l.trim().split(/\s+/))];
+  return modules.map(([mod, version]) => {
+    const dir = path.join(CADDY, `${mod}@${version}`);
+    if (!fs.existsSync(dir)) fail(`no legal files for Go module ${mod} ${version}: add ${path.relative(ROOT, dir)}/`);
+    const files = fs.readdirSync(dir, { recursive: true }).sort()
+      .filter((rel) => fs.statSync(path.join(dir, rel)).isFile())
+      .map((rel) => ({ kind: /NOTICE/i.test(path.basename(rel)) ? 'notice' : 'license', name: rel, text: readText(path.join(dir, rel)) }));
+    const top = files.filter((f) => !f.name.includes(path.sep) && /^(LICEN[CS]E|COPYING)/i.test(f.name));
+    if (top.length === 0) fail(`Go module ${mod} ${version} has no license file`);
+    const isGo = mod === 'go';
+    return {
+      id: isGo ? 'Go standard library and runtime' : mod,
+      version,
+      url: isGo ? `https://github.com/golang/go/tree/${version}` : goModuleZip(mod, version),
+      licenses: [...new Set(top.flatMap((f) => goLicenseIds(f.text, `${mod} ${version} (${f.name})`)))],
+      and: true,
+      files,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 // Components that are part of an image but not dependencies of the application: the runtime it
 // runs on and the programs the all-in-one adds. `texts` names the license texts to append (the
 // default is `licenses`); `files` are files under licenses/components/ to include verbatim.
@@ -544,10 +598,11 @@ Source code: https://github.com/adoptium/jdk25u and https://openjdk.org`,
     licenses: ['Apache-2.0'],
     where: '/usr/local/bin/caddy (from the caddy:2.8.4-alpine image)',
     body: `Copyright 2015 Matthew Holt and The Caddy Authors. Source: https://github.com/caddyserver/caddy
-(tag v2.8.4). Caddy is a Go program; it includes the Go standard library (BSD-3-Clause) and the
-Go modules below, each under its own open source license (BSD, MIT, Apache 2.0, MPL 2.0 and ISC
-licenses). \`caddy build-info\` prints this list from the binary.`,
-    files: ['caddy-2.8.4-modules.txt'],
+(tag v2.8.4). Caddy is a Go program: the binary contains the Go standard library and runtime and
+the Go modules listed in section 2 under "Go modules in /usr/local/bin/caddy", at the versions
+\`caddy build-info\` prints from it. Their license, NOTICE and patent files are in sections 4 and
+5 and the license texts in section 6; the source code of each module at that version is at the
+address listed with it.`,
   },
   nodeRuntime('/usr/local/bin/node (from the node:24.13.0-bookworm-slim image)', ''),
   {
@@ -611,7 +666,7 @@ reproduced in sections 4 and 5, and the full license texts are in section 6.\n`)
     out.push(`\n${g.heading} (${g.components.length})\n${'-'.repeat(g.heading.length + String(g.components.length).length + 3)}\n`);
     const sorted = [...g.components].sort((a, b) => a.id.localeCompare(b.id) || a.version.localeCompare(b.version));
     for (const c of sorted) {
-      const chosen = c.chosen || elect(c.licenses).chosen;
+      const chosen = c.chosen || (c.and ? c.licenses : elect(c.licenses).chosen);
       for (const id of chosen) {
         if (!TEXT_FILES[id]) fail(`${c.id}: no text for elected license ${id}`);
         usedTexts.add(id);
@@ -726,6 +781,7 @@ docs['all-in-one'] = render({
     { heading: 'Java libraries in /opt/certping/agent.jar', components: java.agent },
     { heading: 'Java libraries in /opt/certping/notifier.jar', components: java.notifier },
     { heading: 'npm packages in /opt/certping/web', components: web },
+    { heading: 'Go modules in /usr/local/bin/caddy', components: caddyModules() },
   ],
 });
 
