@@ -425,6 +425,56 @@ function caddyModules() {
 // runs on and the programs the all-in-one adds. `texts` names the license texts to append (the
 // default is `licenses`); `files` are files under licenses/components/ to include verbatim.
 
+// The base images the Dockerfiles pin by digest. The versions written below for the components
+// they bring (and the source locations in section 7) were read from these images; the generator
+// fails when a Dockerfile pins another digest, so that they are updated with it.
+const BASE_IMAGES = [
+  {
+    image: 'registry.access.redhat.com/ubi9/openjdk-25-runtime',
+    tag: '1.24-3.1793323806',
+    digest: 'sha256:2ddacad5332f4e481353668f210623f7e7420f1561515f5686e5abd33cd6d38f',
+    dockerfiles: ['apps/server/Dockerfile', 'apps/agent/Dockerfile', 'apps/notifier/Dockerfile'],
+  },
+  {
+    image: 'registry.access.redhat.com/ubi10/nodejs-24',
+    tag: '10.3-1795423475',
+    digest: 'sha256:f4748b252f0f7353e0f617625ebcba5768e847dde6aaa4b116ac6e2a954c54b0',
+    dockerfiles: ['apps/web/Dockerfile'],
+  },
+  {
+    image: 'eclipse-temurin',
+    tag: '25-jre',
+    digest: 'sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0',
+    dockerfiles: ['deploy/all-in-one/Dockerfile'],
+  },
+  {
+    image: 'caddy',
+    tag: '2.8.4-alpine',
+    digest: 'sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17',
+    dockerfiles: ['deploy/all-in-one/Dockerfile'],
+  },
+  {
+    image: 'node',
+    tag: '24.13.0-bookworm-slim',
+    digest: 'sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f',
+    dockerfiles: ['deploy/all-in-one/Dockerfile'],
+  },
+];
+
+for (const b of BASE_IMAGES) {
+  const pins = (line) => line.includes(`@${b.digest}`) && (line.includes(`${b.image}@`) || line.includes(`${b.image}:`));
+  for (const f of b.dockerfiles) {
+    if (!fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').some(pins)) {
+      fail(`${f} no longer pins ${b.image}@${b.digest}: update BASE_IMAGES and the versions read from it`);
+    }
+  }
+}
+
+function baseImage(image) {
+  const b = BASE_IMAGES.find((x) => x.image === image);
+  return `${b.image}:${b.tag} (${b.digest})`;
+}
+
 const OTEL_AGENT = {
   title: 'OpenTelemetry Java agent',
   version: '2.32.0',
@@ -439,7 +489,7 @@ META-INF/licenses/. The NOTICE files and the extra license files it bundles foll
 
 const UBI_OPENJDK = {
   title: 'Red Hat build of OpenJDK 25 on Red Hat Universal Base Image 9 (base image)',
-  version: '25.0.4.1',
+  version: '25.0.5 (package java-25-openjdk 25.0.5.0.8-1.0.el9)',
   licenses: ['GPL-2.0-only WITH Classpath-exception-2.0'],
   where: 'registry.access.redhat.com/ubi9/openjdk-25-runtime',
   body: `CertPing runs on this JDK and does not modify it; the Classpath Exception lets the application
@@ -448,23 +498,25 @@ contains are in /usr/lib/jvm/java-25-openjdk/legal/ in this image, and the licen
 operating system packages are in /usr/share/licenses/. The base image is redistributed under the
 Red Hat Universal Base Image End User License Agreement:
 https://www.redhat.com/licenses/EULA_Red_Hat_Universal_Base_Image_English_20190422.pdf
-Source code: https://openjdk.org and the source RPMs Red Hat publishes for UBI.`,
+Source code: see section 7.`,
 };
 
-function nodeRuntime(where, extra) {
+function nodeRuntime(version, label, where, extra) {
   return {
     title: 'Node.js',
-    version: '24.13.0',
+    version: label,
     licenses: ['MIT'],
     texts: [],
     where,
-    body: `Copyright Node.js contributors. Source: https://github.com/nodejs/node (tag v24.13.0)
+    body: `Copyright Node.js contributors. Source: https://github.com/nodejs/node (tag v${version})
 ${extra}The Node.js license, which also gives the licenses of the libraries Node.js bundles, follows.`,
-    files: ['nodejs-24.13.0-LICENSE.txt'],
+    files: [`nodejs-${version}-LICENSE.txt`],
   };
 }
 
 const UBI_NODE = nodeRuntime(
+  '24.22.1',
+  '24.22.1 (package nodejs24 24.22.1-3.el10_2)',
   'registry.access.redhat.com/ubi10/nodejs-24 (base image)',
   `The base image is redistributed under the Red Hat Universal Base Image End User License Agreement:
 https://www.redhat.com/licenses/EULA_Red_Hat_Universal_Base_Image_English_20190422.pdf
@@ -549,6 +601,8 @@ function libvipsSection(web) {
     .join('');
 
   return {
+    vipsVersion: versions.vips,
+    pkgVersion,
     title: 'libvips and the libraries it bundles (used by sharp)',
     version: `libvips ${versions.vips} in @img/sharp-libvips-linux-x64 and @img/sharp-libvips-linux-arm64 ${pkgVersion}`,
     licenses: ['LGPL-2.1-or-later (used under LGPL-3.0)'],
@@ -601,17 +655,17 @@ const ALL_IN_ONE = [
     body: `The image is built on eclipse-temurin:25-jre, which is Ubuntu 26.04 LTS, and adds Ubuntu's
 postgresql-18, valkey-server, supervisor, curl, openssl, gosu and their dependencies. The
 copyright and license of every Ubuntu package is in /usr/share/doc/<package>/copyright in this
-image. Source code: https://launchpad.net/ubuntu (apt-get source <package>).`,
+image. Source code: see section 7.`,
   },
   {
     title: 'Eclipse Temurin OpenJDK 25 JRE',
-    version: '25.0.4.1',
+    version: '25.0.5+8',
     licenses: ['GPL-2.0-only WITH Classpath-exception-2.0'],
     where: '/opt/java/openjdk',
     body: `The Java runtime of the server, agent and notifier. CertPing runs on it and does not modify it; the
 Classpath Exception lets the application use it under the application's own license. The
 notices of the libraries the JRE contains are in /opt/java/openjdk/legal/.
-Source code: https://github.com/adoptium/jdk25u and https://openjdk.org`,
+Source code: see section 7.`,
   },
   {
     title: 'PostgreSQL',
@@ -641,7 +695,7 @@ the Go modules listed in section 2 under "Go modules in /usr/local/bin/caddy", a
 5 and the license texts in section 6; the source code of each module at that version is at the
 address listed with it.`,
   },
-  nodeRuntime('/usr/local/bin/node (from the node:24.13.0-bookworm-slim image)', ''),
+  nodeRuntime('24.13.0', '24.13.0', '/usr/local/bin/node (from the node:24.13.0-bookworm-slim image)', ''),
   {
     title: 'supervisor and gosu',
     version: 'supervisor 4.3.0, gosu 1.19 (Ubuntu packages)',
@@ -653,6 +707,84 @@ license; gosu: Apache 2.0) are in /usr/share/doc/supervisor/copyright and
 /usr/share/doc/gosu/copyright.`,
   },
 ];
+
+// ---------------------------------------------------------------------------------------------
+// Source code of the GPL and LGPL components of each image (section 7): a written offer of it
+// (the form of GPL-2.0 section 3(b) and LGPL-2.1 section 6(c)) and where upstream publishes it.
+
+const UBI9_SOURCE = {
+  components: [
+    'OpenJDK 25.0.5, the Red Hat build in package java-25-openjdk 25.0.5.0.8-1.0.el9 (GPL-2.0 with\n    the Classpath Exception)',
+    'the operating system packages of the base image licensed under the GPL or the LGPL; list them\n    with: rpm -qa --qf \'%{NAME} %{VERSION}-%{RELEASE}: %{LICENSE}\\n\'',
+  ],
+  locations: [
+    `Base image: ${baseImage('registry.access.redhat.com/ubi9/openjdk-25-runtime')}`,
+    'OpenJDK: https://github.com/openjdk/jdk25u (tag jdk-25.0.5+8), from which Red Hat builds the\n    source RPM java-25-openjdk-25.0.5.0.8-1.0.el9.src.rpm',
+    'Base image packages: the UBI 9 source repositories,\n    https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/<arch>/{baseos,appstream}/source/SRPMS/\n    (they keep only the current build of each package; the builds in this image are covered by\n    the offer above)',
+  ],
+};
+
+function libvipsSource(libvips) {
+  if (!libvips) fail('sharp-libvips is missing from the web app dependencies');
+  return {
+    component: 'libvips and the libraries bundled in it that are licensed under the LGPL (section 1)',
+    location: `libvips and its bundled libraries: https://github.com/libvips/libvips (tag v${libvips.vipsVersion}),\n    and the build scripts and patches of https://github.com/lovell/sharp-libvips (tag v${libvips.pkgVersion}),\n    which name the source archive of each bundled library`,
+  };
+}
+
+function webSource(libvips) {
+  const vips = libvipsSource(libvips);
+  const image = BASE_IMAGES.find((b) => b.image === 'registry.access.redhat.com/ubi10/nodejs-24');
+  return {
+    components: [
+      'the operating system packages of the base image licensed under the GPL or the LGPL; list them\n    with: rpm -qa --qf \'%{NAME} %{VERSION}-%{RELEASE}: %{LICENSE}\\n\'',
+      vips.component,
+    ],
+    locations: [
+      `Base image: ${baseImage(image.image)}`,
+      `Base image packages: the source RPMs of the image, published as the source image\n    ${image.image}:${image.tag}-source`,
+      vips.location,
+    ],
+  };
+}
+
+function allInOneSource(libvips) {
+  const vips = libvipsSource(libvips);
+  return {
+    components: [
+      'Eclipse Temurin OpenJDK 25.0.5+8 JRE (GPL-2.0 with the Classpath Exception)',
+      'the Ubuntu packages in the image licensed under the GPL or the LGPL; list them with:\n    dpkg-query -W -f \'${source:Package} ${source:Version}\\n\' and see /usr/share/doc/<package>/copyright',
+      vips.component,
+    ],
+    locations: [
+      `Base image: ${baseImage('eclipse-temurin')}, Ubuntu 26.04 LTS`,
+      'Temurin JRE: https://github.com/adoptium/jdk25u (tag jdk-25.0.5+8_adopt), from OpenJDK\n    https://github.com/openjdk/jdk25u (tag jdk-25.0.5+8)',
+      'Ubuntu packages: the Ubuntu 26.04 LTS source packages, https://launchpad.net/ubuntu/+source/<package>\n    (apt-get source <package>=<version>)',
+      vips.location,
+    ],
+  };
+}
+
+function sourceSection(source) {
+  const list = (items) => items.map((i) => `  - ${i}`).join('\n');
+  return `Some components of this image are licensed under a version of the GNU General Public License
+(GPL) or the GNU Lesser General Public License (LGPL):
+
+${list(source.components)}
+
+Written offer: for at least three years after Seaionl Inc. last distributes this image, Seaionl
+Inc. will give any third party, on request, a complete machine-readable copy of the corresponding
+source code of these components, to be distributed under the terms of the license of each
+component, on a medium customarily used for software interchange, for a charge no more than its
+cost of physically performing source distribution. Send requests to legal@certping.com, naming
+the image and its version or digest. This offer is valid to anyone in receipt of this
+information.
+
+Where upstream publishes the source:
+
+${list(source.locations)}
+`;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Rendering
@@ -669,7 +801,7 @@ function licenseLabel(c) {
   return c.licenses.join(' AND ');
 }
 
-function render({ title, intro, runtime, groups }) {
+function render({ title, intro, runtime, groups, source }) {
   const out = [];
   const usedTexts = new Set();
   const notices = new Map(); // hash -> { text, from: Set }
@@ -758,6 +890,10 @@ under, the license named.\n\n`);
       out.push(`\n${LINE}\n${TITLES[id]}${TEXT_FILES[id].length > 1 ? ` (${f.replace('.txt', '')})` : ''}\n${LINE}\n${readText(path.join(TEXTS, f))}`);
     }
   }
+
+  // 7. Source code
+  out.push(heading(7, 'Source code'));
+  out.push(sourceSection(source));
   return out.join('');
 }
 
@@ -772,7 +908,8 @@ image ships; do not edit it by hand.
 CertPing is Copyright 2024-2026 Seaionl Inc. and is licensed under the Apache License 2.0 (LICENSE,
 beside this file). Third-party components remain under their own licenses, given below. In the
 image these files are in ${location}. Source code for CertPing:
-https://github.com/certping-labs/certping`;
+https://github.com/certping-labs/certping. Section 7 offers the source code of the components
+licensed under the GPL or the LGPL.`;
 }
 
 const JAVA_APPS = {
@@ -798,6 +935,7 @@ for (const [app, image] of Object.entries(JAVA_APPS)) {
     intro: intro(image, '/licenses/certping/'),
     runtime: [UBI_OPENJDK, OTEL_AGENT],
     groups: [{ heading: `Java libraries in /app/app.jar (BOOT-INF/lib)`, components: java[app] }],
+    source: UBI9_SOURCE,
   });
 }
 docs.web = render({
@@ -805,6 +943,7 @@ docs.web = render({
   intro: intro('certping-web', '/licenses/certping/'),
   runtime: [UBI_NODE, ...FONTS, ...VENDORED, libvips].filter(Boolean),
   groups: [{ heading: 'npm packages (production dependencies of apps/web)', components: web }],
+  source: webSource(libvips),
 });
 
 // The all-in-one carries the four applications' jars and web app (without the OpenTelemetry
@@ -820,6 +959,7 @@ docs['all-in-one'] = render({
     { heading: 'npm packages in /opt/certping/web', components: web },
     { heading: 'Go modules in /usr/local/bin/caddy', components: caddyModules() },
   ],
+  source: allInOneSource(libvips),
 });
 
 // ---------------------------------------------------------------------------------------------

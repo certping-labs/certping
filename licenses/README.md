@@ -61,6 +61,16 @@ The script runs Maven offline by default; set `MVN_OFFLINE=` to let it download.
 25, Maven, Node.js 24 and pnpm. Versions of runtime components (OpenJDK, Node.js, PostgreSQL,
 Valkey, Caddy, the OpenTelemetry agent, the fonts) are written in
 `.github/scripts/third-party-notices.mjs`; update them there when a Dockerfile changes them.
+`BASE_IMAGES` there records the digest of each base image those versions were read from, and
+the generator fails when a Dockerfile pins another one.
+
+## Source code
+
+Section 7 of each `THIRD-PARTY-NOTICES.txt` names the components of that image licensed under
+the GPL or the LGPL, offers their complete corresponding source code in writing (on request to
+legal@certping.com, for at least three years after the image was last distributed) and lists
+where upstream publishes the source of the versions in the image. EPL-2.0 libraries name their
+source repository and tag and their `-sources.jar` in section 2.
 
 ## Elections
 
