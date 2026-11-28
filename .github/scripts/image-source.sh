@@ -53,6 +53,8 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$out"
+# Absolute, so docker -v binds the directory instead of naming a volume.
+out="$(cd "$out" && pwd)"
 index="$out/SOURCES.txt"
 {
   echo "# Corresponding source collected by .github/scripts/image-source.sh."
