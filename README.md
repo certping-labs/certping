@@ -71,8 +71,8 @@ their certificates for you. Version 0.0.1-beta is a public beta.
 
 ## Quickstart
 
-You need Docker and about 4 GB of free memory. One container runs everything, including the
-database:
+Start with the all-in-one image. It runs the web app, server, agent, notifier, PostgreSQL,
+Valkey and Caddy in one container. You need Docker and about 4 GB of free memory.
 
 ```sh
 docker run -d --name certping \
@@ -90,8 +90,8 @@ docker exec certping certping-admin
 
 Open http://localhost, sign in as `admin` with the password it printed, and choose a new password.
 
-Then follow [Getting started](docs/getting-started.md). In about 30 minutes it takes you from an
-empty install to a certificate that is issued, deployed to Kubernetes and renewed on its own.
+To issue and renew a test certificate, follow [Getting started](docs/getting-started.md). The
+tutorial creates its own container and volume so you can keep your Quickstart installation.
 
 ## Try it without a domain or a cluster
 
@@ -157,14 +157,16 @@ The hot-reload setup needs a small `apps/web/.env.local` file; see
 
 ## Install options
 
-| Option | Best for | Guide |
+| Option | Best for | What to use |
 | --- | --- | --- |
-| All-in-one container | A trial, a homelab or a small team on one host | [deploy/all-in-one](deploy/all-in-one/README.md) |
-| Docker Compose | One server you will keep running | [deploy/compose](deploy/compose/README.md) |
-| Helm charts | Kubernetes, or an external PostgreSQL | [deploy/charts/certping](deploy/charts/certping/README.md) |
-| Azure single VM | An Azure subscription without a cluster | [deploy/azure/single-vm](deploy/azure/single-vm/README.md) |
+| All-in-one container | A trial, a homelab or a small team on one host | The image in [Quickstart](#quickstart) |
+| Docker Compose | One server with separate service containers | `certping-compose-<version>.zip` from [Releases](https://github.com/certping-labs/certping/releases) |
+| Helm | Kubernetes | The `certping` chart in [the Helm install guide](deploy/charts/certping/README.md) |
+| Extra agent | A second cluster or network | The [agent install guide](docs/agents.md) |
+| Azure single VM | An Azure subscription without a cluster | The [Azure VM guide](deploy/azure/single-vm/README.md) |
 
-Always run a release tag such as `0.0.1-beta`, never `latest`.
+Use a version tag such as `0.0.1-beta`. [Release assets](docs/release-assets.md) explains the
+downloads, image references and corresponding source bundles.
 
 ## Good to know
 
@@ -221,6 +223,7 @@ When something else is the better choice:
 | [Operations](docs/operations.md) | Upgrade, back up, monitor and troubleshoot |
 | [Architecture](docs/architecture.md) | Understand how the parts work and where keys live |
 | [PQC readiness](docs/architecture.md#pqc-readiness) | See how certificates are classified for post-quantum migration and how to export a CBOM |
+| [Release assets](docs/release-assets.md) | Choose an install download and find source, scans and checksums |
 | [Release notes](https://github.com/certping-labs/certping/releases) | See what changed in each version |
 
 ## Community and support
@@ -243,8 +246,10 @@ Contributions are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md). Each c
 
 ## License
 
-[Apache License 2.0](LICENSE). Copyright Seaionl Inc. and CertPing contributors. CertPing® is a
-registered trademark of Seaionl Inc. ([TRADEMARKS.md](TRADEMARKS.md)).
+CertPing's source code is licensed under the [Apache License 2.0](LICENSE). Copyright Seaionl Inc.
+and CertPing contributors. Bundled third-party software keeps its own licenses. See [NOTICE](NOTICE)
+and [the licenses shipped in the images](licenses/README.md). CertPing® is a registered trademark
+of Seaionl Inc. ([TRADEMARKS.md](TRADEMARKS.md)).
 
 The hosted service at certping.com and Seaionl's paid offerings are covered by the
 [CertPing terms](https://www.certping.com/terms/) and

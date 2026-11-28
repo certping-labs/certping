@@ -13,6 +13,7 @@ inbound port.
 2. Store the token in a Secret:
 
    ```bash
+   kubectl get namespace certping-agent || kubectl create namespace certping-agent
    kubectl -n certping-agent create secret generic certping-agent-token \
      --from-literal=token=cpa_...
    ```
@@ -20,12 +21,16 @@ inbound port.
 3. Install the chart:
 
    ```bash
-   cd deploy/charts/certping-agent
-   helm install edge . -n certping-agent \
+   helm install edge oci://ghcr.io/certping-labs/charts/certping-agent \
+     --version 0.0.1-beta -n certping-agent \
      --set serverUrl=https://certping.example.com \
      --set secretStore.provider=AZURE_KV \
      --set secretStore.azureKv.vaultUri=https://<vault>.vault.azure.net
    ```
+
+   With the chart downloaded from the release, use its path, such as
+   `./certping-agent-0.0.1-beta.tgz`, in place of the OCI reference and omit `--version`.
+   Use the same chart version as your CertPing server.
 
 The token decides which organization the agent works for. The agent shows
 **Online** on the **Agents** page once it connects. Revoke its token there

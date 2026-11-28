@@ -126,9 +126,8 @@ On an EC2 instance with an instance profile, `DEFAULT` finds the instance role. 
 Vault use `-e AGENT_SECRET_STORE_PROVIDER=AZURE_KV -e CLIENT_KV_URI=https://<vault>.vault.azure.net`;
 for Google Secret Manager `-e AGENT_SECRET_STORE_PROVIDER=GCP_SECRET_MANAGER -e GCP_PROJECT_ID=<project>`.
 
-The image runs the `selfhosted` profile by default; the 0.0.1-beta image sets no profile and needs
-`-e SPRING_PROFILES_ACTIVE=selfhosted`. Without that profile the agent ignores the ACME variables and
-the store details (`CLIENT_KV_URI`, `AWS_REGION`, `GCP_PROJECT_ID` and the auth modes).
+The released image uses the `selfhosted` profile by default. Keep that profile so the agent
+reads the ACME and secret store settings.
 
 A good start logs `Connected to the CertPing agent gateway: organizationId=...` and
 `SecretStore active: provider=...`, and the agent shows **Online** on the **Agents** page. The agent
@@ -141,7 +140,8 @@ no AWS identity on the host, it exits with `Failed to resolve caller identity vi
 kubectl create namespace certping-agent
 kubectl -n certping-agent create secret generic certping-agent-token \
   --from-literal=token=cpa_...
-helm install edge deploy/charts/certping-agent -n certping-agent \
+helm install edge oci://ghcr.io/certping-labs/charts/certping-agent \
+  --version 0.0.1-beta -n certping-agent \
   --set serverUrl=https://certping.example.com \
   -f my-agent-values.yaml
 ```
