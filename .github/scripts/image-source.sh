@@ -12,9 +12,8 @@
 # The trivy reports (image-scan.sh, one per platform) list every operating system package in the
 # image with its source package; the source of every one of them is collected, whatever its
 # license. Written to <out-dir>:
-#   rpm/          Red Hat UBI images: the source RPM of each package, from the UBI CDN. The CDN
-#                 keeps superseded builds that the repository metadata (and so dnf) no longer
-#                 lists, so they are fetched by file name. Red Hat's signatures are checked with
+#   rpm/          Red Hat UBI images: exact source RPMs from the UBI CDN or the pinned base's
+#                 corresponding Red Hat source container. Red Hat's signatures are checked with
 #                 the keys in VERIFY_IMAGE (the image's base image, by digest).
 #   deb/          Ubuntu images: each source package (.dsc and the files it lists) from the
 #                 Ubuntu archive, or from Launchpad, which keeps every published version, once the
@@ -78,6 +77,92 @@ single() {
   printf '%s' "$values"
 }
 
+# Red Hat's source layers may store the SRPM as a symlink to a content-addressed blob.
+# Read the tar members directly, so the link is never followed on the filesystem.
+extract_ubi_source_layer() {
+  python3 - "$1" "$work/recovered" "${missing[@]}" <<'PY'
+import hashlib
+from pathlib import Path
+import re
+import sys
+import tarfile
+
+layer, out, *packages = sys.argv[1:]
+with tarfile.open(layer, "r:gz") as archive:
+    members = {member.name.removeprefix("./"): member for member in archive.getmembers()}
+    for package in packages:
+        member = members.get(f"rpm_dir/{package}")
+        if member is None:
+            continue
+        expected_digest = None
+        if member.issym():
+            link = re.fullmatch(r"\.\./blobs/sha256/([0-9a-f]{64})", member.linkname)
+            if link is None:
+                raise SystemExit(f"{package}: unexpected source blob path")
+            expected_digest = link[1]
+            member = members.get(f"blobs/sha256/{expected_digest}")
+        if member is None or not member.isreg():
+            raise SystemExit(f"{package}: source blob is missing or is not a regular file")
+
+        digest = hashlib.sha256()
+        with archive.extractfile(member) as source, (Path(out) / package).open("wb") as dest:
+            while chunk := source.read(1024 * 1024):
+                digest.update(chunk)
+                dest.write(chunk)
+        if expected_digest is not None and digest.hexdigest() != expected_digest:
+            raise SystemExit(f"{package}: source blob failed its SHA-256 check")
+PY
+}
+
+# Red Hat provides a version-release-source companion for its UBI images. Resolve the tag
+# from the pinned binary image's labels, then extract only the exact SRPMs the CDN lacked.
+collect_ubi_container_sources() {
+  local repo="${VERIFY_IMAGE%@*}" arch version source_ref source_digest layer srpm
+  local checked=" "
+  local -a remaining=()
+  [[ "$repo" == registry.access.redhat.com/* && "$VERIFY_IMAGE" == *@sha256:* ]] ||
+    fail "a pinned registry.access.redhat.com image is required for the UBI source fallback"
+  command -v skopeo >/dev/null || fail "skopeo is required for the UBI source fallback"
+  repo="${repo%:*}"
+  mkdir -p "$work/recovered"
+  for arch in amd64 arm64; do
+    if ! version="$(skopeo --override-arch "$arch" inspect --config "docker://$VERIFY_IMAGE" |
+      jq -er '.config.Labels | [.version, .release] |
+        select(all(.[]; type == "string" and test("^[A-Za-z0-9._-]+$"))) | join("-")')"; then
+      echo "::warning::Cannot read the $arch base image's version and release labels" >&2
+      continue
+    fi
+    source_ref="docker://$repo:$version-source"
+    if [[ "$checked" == *" $source_ref "* ]]; then continue; fi
+    checked+="$source_ref "
+    if ! skopeo copy --retry-times 3 --preserve-digests --digestfile "$work/source-$arch.digest" \
+      "$source_ref" "dir:$work/source-$arch"; then
+      echo "::warning::Cannot copy Red Hat's source container $source_ref" >&2
+      continue
+    fi
+    source_digest="$(cat "$work/source-$arch.digest")"
+    while IFS= read -r layer; do
+      extract_ubi_source_layer "$work/source-$arch/$layer"
+      remaining=()
+      for srpm in "${missing[@]}"; do
+        if [[ -f "$work/recovered/$srpm" ]]; then
+          mv "$work/recovered/$srpm" "$out/rpm/$srpm"
+          record "rpm/$srpm" "docker://$repo@$source_digest"
+        else
+          remaining+=("$srpm")
+        fi
+      done
+      if [[ ${#remaining[@]} -eq 0 ]]; then
+        missing=()
+        return 0
+      fi
+      missing=("${remaining[@]}")
+    done < <(jq -r '(((.layers // []) | reverse[] | .digest), .fsLayers[]?.blobSum) |
+      select(test("^sha256:[0-9a-f]{64}$")) | sub("^sha256:"; "")' \
+      "$work/source-$arch/manifest.json")
+  done
+}
+
 family="$(single '.Metadata.OS.Family // empty')"
 os_version="$(single '.Metadata.OS.Name // empty')"
 os_packages='.Results[]? | select(.Class == "os-pkgs") | .Packages[]? | select((.SrcName // "") != "")'
@@ -92,6 +177,8 @@ case "$family" in
     jq -r "$os_packages | \"\(.SrcName)-\(.SrcVersion)-\(.SrcRelease).src.rpm\"" "${reports[@]}" \
       | sort -u > "$work/srpms"
     while read -r srpm; do
+      [[ "$srpm" =~ ^[[:alnum:]][[:alnum:].+_~^%-]*\.src\.rpm$ ]] ||
+        fail "unexpected source RPM name in the scan report: $srpm"
       letter="$(printf '%s' "${srpm:0:1}" | tr '[:upper:]' '[:lower:]')"
       url=""
       for arch in x86_64 aarch64; do
@@ -110,7 +197,12 @@ case "$family" in
       "${curl[@]}" -o "$out/rpm/$srpm" "$url"
       record "rpm/$srpm" "$url"
     done < "$work/srpms"
-    [[ ${#missing[@]} -eq 0 ]] || fail "source RPMs not found on the UBI CDN: ${missing[*]}"
+    if [[ ${#missing[@]} -gt 0 ]]; then
+      echo "Checking the base image's Red Hat source container for: ${missing[*]}"
+      collect_ubi_container_sources
+    fi
+    [[ ${#missing[@]} -eq 0 ]] ||
+      fail "source RPMs not found in the UBI CDN or matching source container: ${missing[*]}"
 
     in_image=()
     for f in "$out"/rpm/*.src.rpm; do in_image+=("/src/$(basename "$f")"); done

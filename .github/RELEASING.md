@@ -263,11 +263,10 @@ Each release publishes it next to each image:
 
 Each is an OCI artifact in GHCR (`oras pull` restores the files) holding:
 
-- `rpm/` (UBI images): the source RPM of every installed package, at the
-  installed build, from the UBI CDN, with its Red Hat signature checked
-  against the keys in the image's base image. The CDN keeps superseded builds
-  by file name after the repository metadata (and so `dnf download --source`)
-  drops them.
+- `rpm/` (UBI images): the source RPM of every installed package at the
+  installed build. The collector checks the UBI CDN by file name, then checks
+  Red Hat's corresponding source container for any missing packages. It
+  verifies every source RPM against the keys in the pinned base image.
 - `deb/` (all-in-one): the Ubuntu source package (`.dsc` and the files it
   lists) of every installed package, at the installed version, from the
   Ubuntu archive, or from Launchpad, which keeps every published version,
