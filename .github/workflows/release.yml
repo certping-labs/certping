@@ -1111,7 +1111,29 @@ jobs:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           {
-            echo "> Draft created by the Release workflow from \`$SHA\`. Review, edit and publish by hand."
+            if [ "$PUBLISH" = "true" ]; then
+              image_tag="${VERSION#v}"
+              echo "### Start here"
+              echo "For a first install, use the all-in-one image. It includes every CertPing service and the database."
+              echo "You need Docker and about 4 GB of free memory."
+              echo
+              printf '%s\n' '```sh' \
+                'docker run -d --name certping \' \
+                '  -p 80:80 -p 443:443 \' \
+                '  -v certping:/var/lib/certping \' \
+                '  -e CERTPING_URL=http://localhost \' \
+                "  ghcr.io/$GITHUB_REPOSITORY_OWNER/certping:$image_tag" \
+                '```'
+              echo
+              echo "After the first start (2 to 4 minutes), run \`docker exec certping certping-admin\`."
+              echo "Open http://localhost, sign in as \`admin\` with the printed password and choose a new password."
+              echo
+              echo "- **Docker Compose:** Download \`certping-compose-$image_tag.zip\` for separate service containers on one host."
+              echo "- **Kubernetes:** Use the \`certping-$image_tag.tgz\` Helm chart. Use \`certping-agent-$image_tag.tgz\` for an extra agent."
+              echo "- **Downloads, source and checksums:** See [Release assets]($REPO_URL/blob/$SHA/docs/release-assets.md)."
+              echo
+            fi
+            echo "> Built from \`$SHA\` by the Release workflow."
             echo
             echo "### Container images"
             if [ "$PUBLISH" = "true" ]; then
@@ -1166,16 +1188,12 @@ jobs:
               jq -r '.corresponding_source[] | "- \(.image): `\(.ref)` (files and checksums: `\(.index)`)"' dist/release-metadata.json
               echo
             fi
-            echo "### Self-hosting"
-            if [ "$PUBLISH" = "true" ]; then
-              echo "- \`certping-compose-${VERSION#v}.zip\`: the Compose kit, with the images pinned to this release by digest."
-              echo "- \`certping-${VERSION#v}.tgz\`, \`certping-agent-${VERSION#v}.tgz\`: the Helm charts, also at"
-              echo "  \`oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts\`."
-            else
+            if [ "$PUBLISH" != "true" ]; then
+              echo "### Self-hosting"
               echo "- \`certping-compose-${VERSION#v}.zip\`, \`certping-${VERSION#v}.tgz\`, \`certping-agent-${VERSION#v}.tgz\`:"
               echo "  the Compose kit and the Helm charts (dry run: the images they name were not pushed)."
+              echo
             fi
-            echo
             echo "### Supply chain"
             echo "- \`sbom-*.cdx.json\`: CycloneDX software SBOM per app (the software's own dependencies), and"
             echo "  for the all-in-one image when images were pushed. This is not a cryptographic bill of"

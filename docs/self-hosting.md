@@ -12,8 +12,9 @@ already have:
 | Targets in other networks | An extra agent per network | [agents.md](agents.md) and [deploy/charts/certping-agent](../deploy/charts/certping-agent/README.md) |
 
 New to CertPing? [getting-started.md](getting-started.md) walks through a first certificate on the
-all-in-one image. Every setting is in [configuration.md](configuration.md); upgrades, backups and
-troubleshooting are in [operations.md](operations.md).
+all-in-one image. [Release assets](release-assets.md) explains which download to use.
+Every setting is in [configuration.md](configuration.md). Upgrades, backups and troubleshooting
+are in [operations.md](operations.md).
 
 Valkey (Redis compatible, BSD-3-Clause) is the store the server uses for revoked tokens, rate
 limits and a flag cache. The settings keep their Redis names (`REDIS_HOST`, `REDIS_PASSWORD`), and

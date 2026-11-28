@@ -8,16 +8,32 @@ by default, a bundled agent. For agents in other clusters or networks, use the
 
 You need Helm 3, `kubectl`, `openssl`, an Ingress controller and a DNS name.
 
+### Create the bootstrap Secret
+
+Use the source tree for the same release as the chart. The bootstrap script uses the
+Compose secret generator from that tree.
+
 ```bash
-cd deploy/charts/certping
+git clone --depth 1 --branch v0.0.1-beta https://github.com/certping-labs/certping.git
+cd certping
+kubectl get namespace certping || kubectl create namespace certping
+./deploy/charts/certping/create-secret.sh certping.example.com certping
+```
 
-# 1. Once: create the Secret with fresh random keys and passwords.
-./create-secret.sh certping.example.com certping
+You can also download and unpack **Source code (zip)** or **Source code (tar.gz)** from
+the release and run the last two commands from the extracted repository.
 
-# 2. Install.
-helm install certping . -n certping --create-namespace \
+### Install the chart
+
+```bash
+helm install certping oci://ghcr.io/certping-labs/charts/certping \
+  --version 0.0.1-beta -n certping \
   --set url=https://certping.example.com
 ```
+
+With the chart downloaded from the release, use its path, such as
+`./certping-0.0.1-beta.tgz`, in place of the OCI reference and omit `--version`.
+To test a chart from your checkout, use `./deploy/charts/certping`.
 
 `create-secret.sh <domain> [namespace] [secret-name]` creates the Secret
 `certping` (or the name you pass). It refuses to replace a Secret that exists,

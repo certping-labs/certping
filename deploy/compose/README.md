@@ -37,18 +37,22 @@ The server and the bundled agent share the `agent-secrets` volume and `CERTPING_
 so the server can read the private keys the bundled agent holds. See
 [docs/architecture.md#key-custody-and-trust](../../docs/architecture.md#key-custody-and-trust) for the layout that avoids this.
 
-## Quickstart on a laptop
+## Install a release
 
-Needs Docker with Compose v2 and `openssl`.
+You need Docker with Compose v2 and `openssl`. Download the
+[Compose zip from the release](https://github.com/certping-labs/certping/releases) and unpack it.
+For `v0.0.1-beta`:
 
 ```bash
-cd deploy/compose
+unzip certping-compose-0.0.1-beta.zip
+cd certping-compose-0.0.1-beta
 ./setup.sh
 docker compose up -d
 ```
 
-This pulls the released images. `CERTPING_VERSION` defaults to `0.0.1-beta`; set it in `.env` to
-pin another release.
+The zip pins the four CertPing images to the digests in the release notes.
+If you are working from a repository checkout, run the last two commands from `deploy/compose`.
+In a checkout only, `CERTPING_VERSION` in `.env` selects the image tag and defaults to `0.0.1-beta`.
 
 Open http://localhost and sign in as `admin`. `setup.sh` generated a random first password and
 does not print it; read it from `.env`, which only you can open:
